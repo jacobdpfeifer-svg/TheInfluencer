@@ -36,6 +36,16 @@ class TestBuildInitialTimeline:
         item = timeline.tracks[0].items[0]
         assert item.payload == {"shot": "s1", "source": "raw/clip_001.mp4", "in": 0.0, "out": 2.5}
 
+    def test_carries_beat_times_from_features_onto_the_timeline(self, content_features_data: dict) -> None:
+        content_features_data["beat_times"] = [0.5, 1.5, 2.5]
+        features = ContentFeatures.model_validate(content_features_data)
+        timeline = build_initial_timeline(features)
+        assert timeline.beat_times == [0.5, 1.5, 2.5]
+
+    def test_defaults_to_empty_beat_times_when_features_has_none(self, features) -> None:
+        timeline = build_initial_timeline(features)
+        assert timeline.beat_times == []
+
 
 class TestExecute:
     def test_dispatches_ops_in_order_through_the_manifest(self, features) -> None:
@@ -70,6 +80,48 @@ class TestExecute:
 
         text_track = next(t for t in result.tracks if t.kind == "text")
         assert text_track.items[0].payload["content"] == "hi"
+
+
+class TestBeatSyncFullChain:
+    """The full chain the audit was about: content.extract's beat_times ->
+    heuristic_plan's cutter op params -> the cutter subsystem's actual snap.
+    Confirms the wiring isn't dead code end to end, not just at each seam.
+    """
+
+    def test_heuristic_plan_dispatched_through_execute_snaps_a_cut_to_a_beat(self, content_features_data: dict) -> None:
+        from autoedit.director.heuristic import _simple_heuristic_plan
+        from autoedit.models.style_profile import StyleProfile
+
+        # s1 ends at 2.5s (natural cut point); a beat at 2.6s is within the
+        # cutter's 0.5s snap tolerance, so the cut should move to land on it.
+        content_features_data["music_bpm"] = 128.0
+        content_features_data["beat_times"] = [0.5, 2.6, 5.0]
+        features = ContentFeatures.model_validate(content_features_data)
+        style = StyleProfile.model_validate(
+            {
+                "aspect": 0.5625,
+                "shot_len_median": 2.5,
+                "shot_len_spread": 0.5,
+                "cut_on_beat": True,
+                "caption_style_freq": {"karaoke": 0.5, "static": 0.5},
+                "caption_density": 0.0,
+                "text_amount": 0.0,
+                "effect_freq": 0.0,
+                "sample_count": 1,
+            }
+        )
+
+        plan = _simple_heuristic_plan(style, features)
+        cutter_op = next(op for op in plan.ops if op.tool == "cutter")
+        assert cutter_op.params["sync"] == "beat"
+        assert cutter_op.params["beat_times"] == [0.5, 2.6, 5.0]
+
+        timeline = build_initial_timeline(features)
+        result = execute(plan, timeline)
+
+        video_items = result.tracks[0].items
+        assert video_items[0].end == pytest.approx(2.6)  # snapped from its natural 2.5
+        assert video_items[1].start == pytest.approx(2.6)
 
 
 class TestRun:

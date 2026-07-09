@@ -17,7 +17,7 @@ import pytest
 import importlib
 
 from autoedit import ingest
-from autoedit.extractors.audio import AudioFeatures
+from autoedit.extractors.audio import AudioFeatures, extract_audio
 from autoedit.extractors.framing import FramingFeatures, ShotFraming
 from autoedit.extractors.pacing import PacingFeatures
 from autoedit.models import ContentFeatures, MediaAsset
@@ -164,6 +164,30 @@ def test_music_bpm_and_has_speech_pass_through_from_audio(monkeypatch):
     features = extract("whatever.mp4")
     assert features.music_bpm == pytest.approx(128.0)
     assert features.has_speech is True
+
+
+def test_beat_times_pass_through_from_a_real_musical_audio_track(monkeypatch, click_track_path):
+    """`ContentFeatures.beat_times` should carry through the audio extractor's real
+    beat detection (tone.wav is a real 120 BPM click track — see conftest.py), not
+    just an empty placeholder — this is what makes `cutter`'s beat-sync usable."""
+    real_audio = extract_audio(click_track_path)
+    assert len(real_audio.beat_times) >= 4  # sanity: tone.wav really has detectable beats
+
+    _patch_pipeline(
+        monkeypatch, width=1080, height=1920, duration=2.0,
+        pacing=_one_shot_pacing(0.0), framing=_one_shot_framing(0.5625), audio=real_audio,
+    )
+    features = extract("whatever.mp4")
+    assert features.beat_times == real_audio.beat_times
+
+
+def test_beat_times_defaults_to_empty_when_audio_has_none(monkeypatch):
+    _patch_pipeline(
+        monkeypatch, width=1080, height=1920, duration=2.0,
+        pacing=_one_shot_pacing(0.0), framing=_one_shot_framing(0.5625), audio=_audio(),
+    )
+    features = extract("whatever.mp4")
+    assert features.beat_times == []
 
 
 def test_shot_ids_are_sequential_and_one_indexed(monkeypatch):

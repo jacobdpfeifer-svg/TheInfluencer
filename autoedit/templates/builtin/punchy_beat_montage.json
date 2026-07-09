@@ -1,0 +1,66 @@
+{
+  "name": "punchy_beat_montage",
+  "aspect_ratio": "9:16",
+  "fps": 30,
+  "music": { "required": true, "cut_on": "beat" },
+  "slots": [
+    {
+      "id": "hook",
+      "role": "high_energy",
+      "duration": null,
+      "min_duration": 0.5,
+      "max_duration": 3.0,
+      "transform": "none",
+      "effect": "zoom_in",
+      "transition_in": null,
+      "transition_out": "whip_pan"
+    },
+    {
+      "id": "b_roll_1",
+      "role": "any",
+      "duration": null,
+      "min_duration": 0.5,
+      "max_duration": 4.0,
+      "transform": "none",
+      "effect": null,
+      "transition_in": "whip_pan",
+      "transition_out": null
+    },
+    {
+      "id": "b_roll_2",
+      "role": "any",
+      "duration": null,
+      "min_duration": 0.5,
+      "max_duration": 4.0,
+      "transform": "none",
+      "effect": null,
+      "transition_in": null,
+      "transition_out": null
+    },
+    {
+      "id": "b_roll_3",
+      "role": "any",
+      "duration": null,
+      "min_duration": 0.5,
+      "max_duration": 4.0,
+      "transform": "none",
+      "effect": null,
+      "transition_in": null,
+      "transition_out": null
+    },
+    {
+      "id": "payoff",
+      "role": "high_energy",
+      "duration": null,
+      "min_duration": 0.5,
+      "max_duration": 3.0,
+      "transform": "none",
+      "effect": "zoom_out",
+      "transition_in": null,
+      "transition_out": null
+    }
+  ],
+  "text_slots": [
+    { "anchor": "top", "placeholder": "TITLE", "style": "karaoke" }
+  ]
+}

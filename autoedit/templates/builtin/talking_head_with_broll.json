@@ -1,0 +1,45 @@
+{
+  "name": "talking_head_with_broll",
+  "aspect_ratio": "9:16",
+  "fps": 30,
+  "music": { "required": false, "cut_on": "none" },
+  "slots": [
+    {
+      "id": "talking_head_1",
+      "role": "talking_head",
+      "duration": null,
+      "min_duration": 5.0,
+      "max_duration": 15.0,
+      "transform": "center_crop",
+      "effect": null,
+      "transition_in": null,
+      "transition_out": null
+    },
+    {
+      "id": "b_roll_1",
+      "role": "any",
+      "duration": null,
+      "min_duration": 1.0,
+      "max_duration": 3.0,
+      "transform": "none",
+      "effect": null,
+      "transition_in": null,
+      "transition_out": null
+    },
+    {
+      "id": "talking_head_2",
+      "role": "talking_head",
+      "duration": null,
+      "min_duration": 5.0,
+      "max_duration": 15.0,
+      "transform": "center_crop",
+      "effect": null,
+      "transition_in": null,
+      "transition_out": null
+    }
+  ],
+  "text_slots": [
+    { "anchor": "top", "placeholder": "TITLE", "style": "static" },
+    { "anchor": "bottom", "placeholder": "CTA", "style": "static" }
+  ]
+}

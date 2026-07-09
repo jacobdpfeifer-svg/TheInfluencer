@@ -11,10 +11,8 @@ These smoke tests close that gap cheaply:
   silently.
 - `test_emoji_font_covers_common_emoji_glyphs` is a fast, render-free font
   coverage check. It is the test that would have caught the blank-emoji bug:
-  Roboto has no emoji glyphs, so `EMOJI_FONT_PATH` must point at an
-  emoji-capable font. It is marked `xfail(strict=True)` until that font is
-  added — when you fix it, the strict xfail flips to a failure telling you to
-  remove this marker.
+  Roboto has no emoji glyphs, so `renderer.EMOJI_FONT_PATH` points at a
+  dedicated emoji-capable font (vendored Noto Color Emoji) instead.
 
 Run just these with:  pytest -m render
 Skip them in a fast unit loop with:  pytest -m "not render"
@@ -88,20 +86,11 @@ def test_render_smoke_produces_a_valid_mp4(tmp_path: Path) -> None:
 
 
 @pytest.mark.render
-@pytest.mark.xfail(
-    strict=True,
-    reason="BLANK-EMOJI BUG: emoji overlays render with Roboto, which has no "
-    "emoji glyphs. Add an emoji-capable font, point renderer.EMOJI_FONT_PATH at "
-    "it, then remove this xfail marker.",
-)
 def test_emoji_font_covers_common_emoji_glyphs() -> None:
     """The font used to render emoji overlays must actually contain emoji glyphs."""
     from fontTools.ttLib import TTFont
 
-    # The font the renderer uses for emoji. Today the renderer reuses the text
-    # font (Roboto) for emoji; once fixed this should be a dedicated emoji font.
-    emoji_font_path = getattr(renderer, "EMOJI_FONT_PATH", renderer.DEFAULT_FONT_PATH)
-    cmap = TTFont(str(emoji_font_path)).getBestCmap()
+    cmap = TTFont(str(renderer.EMOJI_FONT_PATH)).getBestCmap()
 
     missing = [name for name, cp in _SAMPLE_EMOJI.items() if cp not in cmap]
-    assert not missing, f"emoji font {emoji_font_path} is missing glyphs for: {missing}"
+    assert not missing, f"emoji font {renderer.EMOJI_FONT_PATH} is missing glyphs for: {missing}"

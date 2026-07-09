@@ -56,6 +56,7 @@ def extract(path: str | Path) -> ContentFeatures:
         motion=_motion_bucket(pacing.motion_curve),
         is_vertical=media.height > media.width,
         has_face=any(shot.faces > 0 for shot in shots),
+        beat_times=audio.beat_times,
     )
 
 

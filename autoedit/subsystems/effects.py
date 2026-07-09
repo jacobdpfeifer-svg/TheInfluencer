@@ -23,6 +23,10 @@ _TRACK_KIND = "effect"
 _DEFAULT_TRACK_NAME = "effects"
 
 
+# Default speed multiplier for `kind="speed_ramp"` when `factor` is omitted.
+_DEFAULT_SPEED_RAMP_FACTOR = 1.5
+
+
 class EffectParams(BaseModel):
     """Params for the `effect` tool."""
 
@@ -32,12 +36,21 @@ class EffectParams(BaseModel):
     shot: str | None = Field(default=None, description="Shot id to scope the effect to.")
     start: float | None = Field(default=None, ge=0, description="Explicit start time, overriding `shot` lookup.")
     end: float | None = Field(default=None, gt=0, description="Explicit end time, overriding `shot` lookup.")
+    factor: float | None = Field(
+        default=None, gt=0, description="Speed multiplier, only meaningful (and only accepted) when kind='speed_ramp'."
+    )
 
     @model_validator(mode="after")
     def _check_has_a_span_source(self) -> "EffectParams":
         has_explicit_span = self.start is not None and self.end is not None
         if not has_explicit_span and self.shot is None:
             raise ValueError("effect params must include either 'shot' or both 'start' and 'end'")
+        return self
+
+    @model_validator(mode="after")
+    def _check_factor_only_for_speed_ramp(self) -> "EffectParams":
+        if self.factor is not None and self.kind != "speed_ramp":
+            raise ValueError(f"effect params: 'factor' is only valid when kind='speed_ramp' (got kind={self.kind!r})")
         return self
 
 
@@ -56,6 +69,10 @@ def apply_effect(timeline: Timeline, params: dict) -> Timeline:
     payload: dict[str, object] = {"kind": effect_params.kind}
     if effect_params.shot is not None:
         payload["shot"] = effect_params.shot
+    if effect_params.kind == "speed_ramp":
+        # Always concrete on the Timeline, even if the caller omitted it, so
+        # the renderer never has to guess a default from a bare "speed_ramp".
+        payload["factor"] = effect_params.factor if effect_params.factor is not None else _DEFAULT_SPEED_RAMP_FACTOR
 
     item = TimelineItem(id=f"fx-{count_items_of_kind(timeline, _TRACK_KIND) + 1}", start=start, end=end, payload=payload)
     return append_item(timeline, kind=_TRACK_KIND, track_name=_DEFAULT_TRACK_NAME, item=item)

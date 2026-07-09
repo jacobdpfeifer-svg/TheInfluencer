@@ -30,3 +30,6 @@ class ContentFeatures(BaseModel):
     motion: MotionBucket = Field(description="Quantized overall motion bucket.")
     is_vertical: bool = Field(description="Whether the footage is vertical (portrait) aspect.")
     has_face: bool = Field(description="Whether any face was detected across the footage.")
+    beat_times: list[float] = Field(
+        default_factory=list, description="Detected audio beat timestamps (seconds), from the audio extractor."
+    )

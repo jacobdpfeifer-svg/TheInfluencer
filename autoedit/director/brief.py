@@ -13,6 +13,7 @@ from typing import Any
 from autoedit.models.content_features import ContentFeatures
 from autoedit.models.shot import Shot
 from autoedit.models.style_profile import StyleProfile
+from autoedit.templates.matcher import match_template
 
 # Motion-magnitude bucket edges for per-shot briefing (mirrors the coarser
 # whole-video bucketing `content.extract` already does — see AGENTS.md).
@@ -21,11 +22,17 @@ _HIGH_MOTION_MIN = 0.6
 
 
 def build_brief(features: ContentFeatures, style: StyleProfile, manifest: dict[str, Any]) -> dict[str, Any]:
-    """Return the compact JSON brief the director hands to the LLM (or heuristic)."""
+    """Return the compact JSON brief the director hands to the LLM (or heuristic).
+
+    Includes the best-fitting template's name (per `templates.match_template`,
+    deterministic, no LLM) so the LLM knows which structure is already in
+    play — it's free to follow it or override it entirely.
+    """
     return {
         "features": _brief_features(features),
         "style": _brief_style(style),
         "tools": sorted(manifest.keys()),
+        "template": match_template(features, style).name,
     }
 
 

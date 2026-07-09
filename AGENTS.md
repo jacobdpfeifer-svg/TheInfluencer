@@ -29,11 +29,27 @@ ingest ─┐
         ├─> extractors ─┬─(Phase A)─> aggregate ─> StyleProfile
         │               └─(Phase B)─> ContentFeatures ─┐
                                                         v
+                                                  templates/ ─┐
+                                                (match_template│
+                                                 + fill_template)
+                                                              v
                              tool manifest ──> director ──> EditPlan
                                                               │ (validate / fallback)
                                                               v
                                      executor ─> subsystems ─> Timeline ─> renderer ─> mp4
 ```
+
+`templates/` (`match_template` + `fill_template`) is deterministic — no LLM,
+same as the heuristic fallback. `match_template` picks the best-fitting
+builtin `Template` for a `ContentFeatures`/`StyleProfile` pair and
+`fill_template` pours real shots into its slots to produce an `EditPlan`
+(via `scipy`'s Hungarian algorithm for a globally-optimal slot<->shot
+assignment). The director's heuristic fallback (`director/heuristic.py`)
+tries this template fill first and only drops to its own bare rule-based
+plan when no template scores above a minimum fit threshold. When the LLM is
+active, the matched template's name is included in the director's brief so
+the model knows which structure is already in play — but the LLM is free
+to override the template's plan entirely; templates never constrain it.
 
 ## The four extractors (shared by both phases)
 1. **Pacing** (PySceneDetect + frame diff): cut list, median shot length, motion curve.

@@ -1,0 +1,17 @@
+{
+  "name": "quick_montage",
+  "aspect_ratio": "9:16",
+  "fps": 30,
+  "music": { "required": true, "cut_on": "beat" },
+  "slots": [
+    { "id": "b_roll_1", "role": "any", "duration": null, "min_duration": 0.3, "max_duration": 1.5, "transform": "none", "effect": "zoom_in", "transition_in": null, "transition_out": null },
+    { "id": "b_roll_2", "role": "any", "duration": null, "min_duration": 0.3, "max_duration": 1.5, "transform": "none", "effect": null, "transition_in": null, "transition_out": null },
+    { "id": "b_roll_3", "role": "any", "duration": null, "min_duration": 0.3, "max_duration": 1.5, "transform": "none", "effect": "zoom_in", "transition_in": null, "transition_out": null },
+    { "id": "b_roll_4", "role": "any", "duration": null, "min_duration": 0.3, "max_duration": 1.5, "transform": "none", "effect": null, "transition_in": null, "transition_out": null },
+    { "id": "b_roll_5", "role": "any", "duration": null, "min_duration": 0.3, "max_duration": 1.5, "transform": "none", "effect": "zoom_in", "transition_in": null, "transition_out": null },
+    { "id": "b_roll_6", "role": "any", "duration": null, "min_duration": 0.3, "max_duration": 1.5, "transform": "none", "effect": null, "transition_in": null, "transition_out": null },
+    { "id": "b_roll_7", "role": "any", "duration": null, "min_duration": 0.3, "max_duration": 1.5, "transform": "none", "effect": "zoom_in", "transition_in": null, "transition_out": null },
+    { "id": "b_roll_8", "role": "any", "duration": null, "min_duration": 0.3, "max_duration": 1.5, "transform": "none", "effect": null, "transition_in": null, "transition_out": null }
+  ],
+  "text_slots": []
+}

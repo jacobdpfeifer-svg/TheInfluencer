@@ -9,6 +9,19 @@ def test_valid_timeline_from_fixture(timeline_data):
     assert len(timeline.tracks) == 2
     assert timeline.tracks[0].kind == "video"
     assert timeline.tracks[0].items[0].payload["shot"] == "s1"
+    assert timeline.beat_times == []
+
+
+def test_beat_times_defaults_to_empty_list():
+    timeline = Timeline(tracks=[])
+    assert timeline.beat_times == []
+
+
+def test_beat_times_round_trips(timeline_data):
+    timeline_data["beat_times"] = [0.5, 1.0, 1.5]
+    timeline = Timeline(**timeline_data)
+    reloaded = Timeline.model_validate_json(timeline.model_dump_json())
+    assert reloaded.beat_times == [0.5, 1.0, 1.5]
 
 
 def test_round_trips_through_json(timeline_data):
@@ -50,6 +63,11 @@ def test_rejects_negative_start():
 def test_rejects_invalid_track_kind():
     with pytest.raises(ValidationError):
         Track(name="v1", kind="holograms")
+
+
+def test_transition_is_a_valid_track_kind():
+    track = Track(name="transitions", kind="transition", items=[TimelineItem(id="trans-1", start=1.85, end=2.15, payload={})])
+    assert track.kind == "transition"
 
 
 def test_rejects_nested_invalid_item_in_track(timeline_data):

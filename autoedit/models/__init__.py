@@ -8,6 +8,7 @@ from autoedit.models.media_asset import MediaAsset, MediaType
 from autoedit.models.plan import EditOp, EditPlan
 from autoedit.models.shot import Shot, ShotScale
 from autoedit.models.style_profile import CaptionStyleFreq, StyleProfile
+from autoedit.models.template import SlotRole, Template, TemplateMusic, TemplateSlot, TextSlot
 from autoedit.models.timeline import Timeline, Track, TimelineItem, TrackKind
 
 __all__ = [
@@ -25,4 +26,9 @@ __all__ = [
     "Track",
     "TimelineItem",
     "TrackKind",
+    "Template",
+    "TemplateSlot",
+    "TemplateMusic",
+    "TextSlot",
+    "SlotRole",
 ]

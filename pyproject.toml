@@ -14,6 +14,8 @@ dependencies = [
     "numpy",
     "scipy",
     "moviepy>=2.0,<3.0",        # renderer: single-pass composite (v1 API is incompatible, never use it)
+    "pillow>=10.0",             # renderer: rasterizes emoji directly (MoviePy's TextClip can't use bitmap-strike fonts)
+    "httpx>=0.27",              # director/openai_client: raw HTTP call to an OpenAI-compatible chat completions API (no SDK)
 ]
 
 [project.optional-dependencies]

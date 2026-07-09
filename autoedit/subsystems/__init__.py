@@ -18,12 +18,14 @@ from autoedit.subsystems.cutter import CutterParams, cut
 from autoedit.subsystems.effects import EffectParams, apply_effect
 from autoedit.subsystems.emoji_adder import EmojiParams, add_emoji
 from autoedit.subsystems.text_adder import TextParams, add_text
+from autoedit.subsystems.transitions import TransitionParams, apply_transition
 
 TOOL_MANIFEST: dict[str, Callable[[Timeline, dict], Timeline]] = {
     "cutter": cut,
     "text": add_text,
     "emoji": add_emoji,
     "effect": apply_effect,
+    "transition": apply_transition,
 }
 
 # What params each tool accepts, keyed the same way as `TOOL_MANIFEST`. The
@@ -35,6 +37,7 @@ TOOL_PARAMS_MANIFEST: dict[str, type] = {
     "text": TextParams,
     "emoji": EmojiParams,
     "effect": EffectParams,
+    "transition": TransitionParams,
 }
 
 __all__ = [
@@ -48,4 +51,6 @@ __all__ = [
     "EmojiParams",
     "apply_effect",
     "EffectParams",
+    "apply_transition",
+    "TransitionParams",
 ]

@@ -9,6 +9,7 @@ from autoedit.director.brief import build_brief
 from autoedit.director.director import direct
 from autoedit.director.heuristic import HEURISTIC_CONFIDENCE, heuristic_plan
 from autoedit.director.llm import LLMClient, stub_llm
+from autoedit.director.openai_client import make_llm_client
 from autoedit.director.validate import PlanValidationError, validate_plan
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "HEURISTIC_CONFIDENCE",
     "stub_llm",
     "LLMClient",
+    "make_llm_client",
     "validate_plan",
     "PlanValidationError",
 ]

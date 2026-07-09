@@ -18,6 +18,17 @@ def test_music_bpm_optional(content_features_data):
     assert features.music_bpm is None
 
 
+def test_beat_times_defaults_to_empty_list(content_features_data):
+    features = ContentFeatures(**content_features_data)
+    assert features.beat_times == []
+
+
+def test_beat_times_accepts_a_list_of_floats(content_features_data):
+    content_features_data["beat_times"] = [0.5, 1.0, 1.5]
+    features = ContentFeatures(**content_features_data)
+    assert features.beat_times == [0.5, 1.0, 1.5]
+
+
 def test_round_trips_through_json(content_features_data):
     features = ContentFeatures(**content_features_data)
     reloaded = ContentFeatures.model_validate_json(features.model_dump_json())

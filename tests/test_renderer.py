@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import pytest
 
+from autoedit import renderer
 from autoedit.models.timeline import Timeline, TimelineItem, Track
-from autoedit.renderer import build_render_plan
+from autoedit.renderer import EffectInstruction, VideoSegment, build_render_plan
 
 
 def _timeline(*tracks: Track) -> Timeline:
@@ -104,3 +105,97 @@ class TestBuildRenderPlan:
         # raise, since the renderer can't resolve pixels without one.
         with pytest.raises(ValueError, match="source"):
             build_render_plan(timeline)
+
+    def test_effect_factor_is_resolved_for_speed_ramp(self) -> None:
+        track = Track(
+            name="effects",
+            kind="effect",
+            items=[TimelineItem(id="fx-1", start=0.0, end=2.0, payload={"kind": "speed_ramp", "shot": "s1", "factor": 2.0})],
+        )
+        plan = build_render_plan(_timeline(track))
+        assert plan.effects[0].factor == pytest.approx(2.0)
+
+    def test_effect_factor_defaults_to_none_for_other_kinds(self) -> None:
+        track = Track(
+            name="effects", kind="effect", items=[TimelineItem(id="fx-1", start=0.0, end=2.0, payload={"kind": "shake", "shot": "s1"})]
+        )
+        plan = build_render_plan(_timeline(track))
+        assert plan.effects[0].factor is None
+
+    def test_transitions_resolved_from_the_transition_track(self) -> None:
+        track = Track(
+            name="transitions",
+            kind="transition",
+            items=[
+                TimelineItem(id="trans-1", start=1.85, end=2.15, payload={"kind": "fade", "between": ["s1", "s2"]})
+            ],
+        )
+        plan = build_render_plan(_timeline(track))
+        assert len(plan.transitions) == 1
+        transition = plan.transitions[0]
+        assert (transition.kind, transition.between, transition.start, transition.end) == ("fade", ["s1", "s2"], 1.85, 2.15)
+
+    def test_transitions_default_to_empty(self) -> None:
+        plan = build_render_plan(Timeline(tracks=[]))
+        assert plan.transitions == []
+
+    def test_transitions_sorted_by_start(self) -> None:
+        track = Track(
+            name="transitions",
+            kind="transition",
+            items=[
+                TimelineItem(id="trans-2", start=5.0, end=5.3, payload={"kind": "fade", "between": ["s2", "s3"]}),
+                TimelineItem(id="trans-1", start=1.85, end=2.15, payload={"kind": "whip_pan", "between": ["s1", "s2"]}),
+            ],
+        )
+        plan = build_render_plan(_timeline(track))
+        assert [t.between for t in plan.transitions] == [["s1", "s2"], ["s2", "s3"]]
+
+
+class TestApplyEffectsToClipNoOp:
+    """`_apply_effects_to_clip` is the ONE place effect kinds get dispatched to a real clip
+    transform; per `.cursor/rules/subsystems.mdc`'s "AI raises the ceiling; rules are the
+    floor", an unrecognized kind must be a silent no-op rather than a crash. These use a
+    bare sentinel object as the "clip" -- no MoviePy/real media needed, since a no-op never
+    calls into the clip at all.
+    """
+
+    def test_unknown_effect_kind_returns_the_same_clip_object_unchanged(self) -> None:
+        segment = VideoSegment(source="a.mp4", in_=0.0, out_=1.0, output_start=0.0, output_end=1.0, shot="s1")
+        effect = EffectInstruction(kind="teleport", shot="s1", start=0.0, end=1.0)
+        sentinel_clip = object()
+
+        result = renderer._apply_effects_to_clip(sentinel_clip, segment, [effect])
+
+        assert result is sentinel_clip
+
+    def test_flash_is_also_a_noop_here_since_it_is_handled_as_an_overlay_not_a_clip_transform(self) -> None:
+        segment = VideoSegment(source="a.mp4", in_=0.0, out_=1.0, output_start=0.0, output_end=1.0, shot="s1")
+        effect = EffectInstruction(kind="flash", shot="s1", start=0.0, end=1.0)
+        sentinel_clip = object()
+
+        result = renderer._apply_effects_to_clip(sentinel_clip, segment, [effect])
+
+        assert result is sentinel_clip
+
+    def test_effect_scoped_to_a_different_shot_is_a_noop(self) -> None:
+        segment = VideoSegment(source="a.mp4", in_=0.0, out_=1.0, output_start=0.0, output_end=1.0, shot="s1")
+        effect = EffectInstruction(kind="zoom_in", shot="s2", start=0.0, end=1.0)
+        sentinel_clip = object()
+
+        result = renderer._apply_effects_to_clip(sentinel_clip, segment, [effect])
+
+        assert result is sentinel_clip
+
+    def test_known_effect_kind_does_call_into_the_clip(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Contrast case: a *registered* kind (zoom_in) must actually be dispatched, not no-op'd."""
+        calls = []
+        monkeypatch.setitem(renderer._EFFECT_FUNCS, "zoom_in", lambda clip, duration, effect: calls.append(1) or "transformed")
+
+        segment = VideoSegment(source="a.mp4", in_=0.0, out_=1.0, output_start=0.0, output_end=1.0, shot="s1")
+        effect = EffectInstruction(kind="zoom_in", shot="s1", start=0.0, end=1.0)
+
+        result = renderer._apply_effects_to_clip(object(), segment, [effect])
+
+        assert calls == [1]
+        assert result == "transformed"

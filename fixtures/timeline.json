@@ -15,5 +15,6 @@
         { "id": "cap-1", "start": 0.0, "end": 1.5, "payload": { "content": "3 months in", "style": "karaoke" } }
       ]
     }
-  ]
+  ],
+  "beat_times": []
 }

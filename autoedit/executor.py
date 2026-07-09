@@ -35,7 +35,10 @@ def build_initial_timeline(features: ContentFeatures) -> Timeline:
 
     Each item's payload carries `shot`/`source`/`in`/`out` — everything
     `cutter`, `effects`, and `renderer.build_render_plan` need downstream
-    (see `.cursor/rules/subsystems.mdc` and `fixtures/timeline.json`).
+    (see `.cursor/rules/subsystems.mdc` and `fixtures/timeline.json`). Also
+    carries `features.beat_times` onto the Timeline itself, so the audio's
+    detected beats travel with the edit rather than needing to be re-threaded
+    through every op's params by hand.
     """
     items = [
         TimelineItem(
@@ -46,7 +49,10 @@ def build_initial_timeline(features: ContentFeatures) -> Timeline:
         )
         for shot in features.shots
     ]
-    return Timeline(tracks=[Track(name=_VIDEO_TRACK_NAME, kind=_VIDEO_TRACK_KIND, items=items)])
+    return Timeline(
+        tracks=[Track(name=_VIDEO_TRACK_NAME, kind=_VIDEO_TRACK_KIND, items=items)],
+        beat_times=features.beat_times,
+    )
 
 
 def execute(plan: EditPlan, timeline: Timeline, *, manifest: ToolManifest = TOOL_MANIFEST) -> Timeline:

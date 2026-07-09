@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from autoedit import cli, ingest
-from autoedit.director import heuristic_plan
 from autoedit.executor import build_initial_timeline, execute, run as run_executor
 from autoedit.models.style_profile import StyleProfile
 
@@ -68,13 +67,16 @@ class TestMakeEndToEnd:
         self, tmp_path, multi_shot_clip_path
     ) -> None:
         """With the neutral DEFAULT_STYLE_PROFILE, the stub LLM always falls back to
-        `heuristic_plan`, which (per its own rules, with no music/faces/text/effect
-        signal) keeps every shot uncut -- so the rendered duration should match the
-        source's."""
+        `heuristic_plan`. `_simple_heuristic_plan` (per its own rules, with no
+        music/faces/text/effect signal) keeps every shot uncut -- and since `keep`
+        never drops or trims a shot regardless of which plan layer wins (a
+        template fill also keeps every real shot per `filler.py`), the rendered
+        duration should match the source's either way."""
         from autoedit.content.extract import extract as extract_content_features
+        from autoedit.director.heuristic import _simple_heuristic_plan
 
         features = extract_content_features(multi_shot_clip_path)
-        plan = heuristic_plan(cli.DEFAULT_STYLE_PROFILE, features)
+        plan = _simple_heuristic_plan(cli.DEFAULT_STYLE_PROFILE, features)
         assert [op.tool for op in plan.ops] == ["cutter"]  # no text/effect/emoji signal in a neutral profile
 
         output = tmp_path / "out.mp4"

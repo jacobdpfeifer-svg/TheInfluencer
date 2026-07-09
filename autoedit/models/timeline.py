@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-TrackKind = Literal["video", "audio", "text", "emoji", "effect"]
+TrackKind = Literal["video", "audio", "text", "emoji", "effect", "transition"]
 
 
 class TimelineItem(BaseModel):
@@ -57,3 +57,9 @@ class Timeline(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tracks: list[Track] = Field(default_factory=list, description="All tracks in this timeline.")
+    beat_times: list[float] = Field(
+        default_factory=list,
+        description="Detected audio beat timestamps (seconds), carried through from "
+        "ContentFeatures so tools (e.g. `cutter`'s beat-sync) can read them off the "
+        "Timeline itself rather than needing them re-threaded through every op's params.",
+    )
