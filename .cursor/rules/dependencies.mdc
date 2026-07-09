@@ -1,0 +1,41 @@
+---
+description: Dependency hygiene (OpenCV must stay <5, pin both variants) and render-path smoke test discipline
+globs:
+  - pyproject.toml
+  - autoedit/renderer.py
+  - tests/test_render_smoke.py
+alwaysApply: false
+---
+
+# Dependencies + render smoke test
+
+## OpenCV must stay below 5.0 — pin BOTH variants
+
+`extractors/framing.py` uses `cv2.CascadeClassifier`, which OpenCV **5.0
+removed**. Two packages ship the same `cv2` module and the newer one wins at
+import time:
+
+- `opencv-python-headless` — our direct dependency.
+- `opencv-python` — pulled in **transitively and unpinned by `scenedetect`**.
+
+Pinning only the headless package is NOT enough: scenedetect's unpinned
+`opencv-python` resolves to 5.0 and shadows it, silently breaking all
+face/framing detection at import. Both must be capped:
+
+```toml
+"opencv-python-headless>=4.8,<5",
+"opencv-python<5",
+```
+
+After changing either line, verify before committing:
+
+```
+python -c "import cv2; assert hasattr(cv2, 'CascadeClassifier'), cv2.__version__"
+```
+
+## Render smoke test discipline
+
+`tests/test_render_smoke.py` is the ONE place the real MoviePy composite runs
+in CI. Any overlay drawn from a font MUST have its glyph coverage asserted
+there. Roboto has no emoji glyphs — emoji need a dedicated emoji-capable font
+(referenced by `renderer.EMOJI_FONT_PATH` once added).
