@@ -1,0 +1,34 @@
+---
+alwaysApply: true
+description: Core architecture and inviolable laws for the autoedit shortform auto-editor
+---
+
+# autoedit — core rules
+
+A Python program that studies short-form videos the user likes, learns their
+editing style into a preferences file, then auto-edits the user's raw footage to
+match. Two phases (learn / edit) share ONE set of extractors. See AGENTS.md for
+architecture, schemas, and build order.
+
+## Stack — pin these, do not substitute
+- Python 3.11+, `ffmpeg` + `ffprobe` (system deps)
+- PySceneDetect (cuts/pacing), librosa (audio/beats), OpenCV (framing/faces),
+  an OCR lib (on-screen text)
+- OpenTimelineIO = internal timeline model
+- MoviePy **2.x only** for the single final render (v1 API is incompatible — never use v1)
+- Pydantic **v2** for every inter-stage object
+
+## Inviolable laws
+1. **The LLM only reads and writes JSON. It never touches pixels or audio
+   samples.** It reads feature + preference JSON and returns an `EditPlan`. Full stop.
+2. **Every stage is a pure function that takes and returns a Pydantic model.** No
+   hidden global state.
+3. **Subsystems write instructions to the `Timeline`; they never render.**
+   Rendering is ONE composite pass at the very end. Never re-encode between edits.
+4. **Every AI decision has a deterministic fallback.** The heuristic path must
+   produce a valid result with the LLM fully stubbed. AI raises the ceiling; rules
+   are the floor.
+
+## Discipline
+Build vertical-slice, thinnest end-to-end path first. Every stage ships with a
+test against a fixture — never require a real video or a render to test logic.

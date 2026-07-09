@@ -1,0 +1,47 @@
+{
+  "pacing": {
+    "duration": 2.0,
+    "cuts": [0.5, 1.0, 1.5],
+    "shot_bounds": [[0.0, 0.5], [0.5, 1.0], [1.0, 1.5], [1.5, 2.0]],
+    "shot_lengths": [0.5, 0.5, 0.5, 0.5],
+    "shot_len_median": 0.5,
+    "motion_curve": [0.30, 0.35, 0.32, 0.31]
+  },
+  "framing": {
+    "aspect": 0.5625,
+    "shots": [
+      {"start": 0.0, "end": 0.5, "faces": 1, "face_positions": [[0.5, 0.4]], "scale": "close", "camera": "moving", "brightness": 0.55, "sharpness": 150.0},
+      {"start": 0.5, "end": 1.0, "faces": 0, "face_positions": [], "scale": "wide", "camera": "moving", "brightness": 0.50, "sharpness": 140.0},
+      {"start": 1.0, "end": 1.5, "faces": 1, "face_positions": [[0.48, 0.42]], "scale": "close", "camera": "moving", "brightness": 0.52, "sharpness": 160.0},
+      {"start": 1.5, "end": 2.0, "faces": 0, "face_positions": [], "scale": "wide", "camera": "moving", "brightness": 0.49, "sharpness": 145.0}
+    ]
+  },
+  "audio": {
+    "duration": 2.0,
+    "bpm": 120.0,
+    "beat_times": [0.0, 0.5, 1.0, 1.5, 2.0],
+    "rms_curve": [0.08, 0.09, 0.10, 0.09],
+    "rms_times": [0.0, 0.5, 1.0, 1.5],
+    "has_speech": false
+  },
+  "text": {
+    "shots": [
+      {"start": 0.0, "end": 0.5, "style": "karaoke", "events": [
+        {"text": "LET'S", "start": 0.0, "end": 0.25, "anchor": "middle"},
+        {"text": "GO", "start": 0.25, "end": 0.5, "anchor": "middle"}
+      ]},
+      {"start": 0.5, "end": 1.0, "style": "karaoke", "events": [
+        {"text": "RIGHT", "start": 0.5, "end": 0.75, "anchor": "middle"},
+        {"text": "NOW", "start": 0.75, "end": 1.0, "anchor": "middle"}
+      ]},
+      {"start": 1.0, "end": 1.5, "style": "karaoke", "events": [
+        {"text": "FEEL", "start": 1.0, "end": 1.25, "anchor": "middle"},
+        {"text": "IT", "start": 1.25, "end": 1.5, "anchor": "middle"}
+      ]},
+      {"start": 1.5, "end": 2.0, "style": "karaoke", "events": [
+        {"text": "YEAH", "start": 1.5, "end": 1.75, "anchor": "middle"},
+        {"text": "WOO", "start": 1.75, "end": 2.0, "anchor": "middle"}
+      ]}
+    ]
+  }
+}

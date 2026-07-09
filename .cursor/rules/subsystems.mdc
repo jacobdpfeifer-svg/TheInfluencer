@@ -1,0 +1,25 @@
+---
+description: Rules for the edit subsystems (cutter, text, emoji, effects), the single-pass renderer, and the executor that drives them
+globs:
+  - autoedit/subsystems/**
+  - autoedit/renderer.py
+  - autoedit/executor.py
+alwaysApply: false
+---
+
+# Subsystem + render rules
+
+- Every subsystem is a **pure function** `(timeline: Timeline, params) -> Timeline`.
+  It appends or edits timeline instructions ONLY. It must never open, decode, or
+  write a video file.
+- **One and only one place renders:** `renderer.render(timeline) -> mp4`, a single
+  composite pass. If you find yourself rendering inside a subsystem, stop — that is
+  the bug. Never chain renders / never re-encode between edits.
+- The **executor** walks an `EditPlan`, dispatches each op to its subsystem by name
+  (the tool manifest is the map), then calls the renderer exactly once at the end.
+- MoviePy 2.x for the render. `TextClip` needs an **explicit font-file path** —
+  never rely on system font resolution (it fails on Linux). Keep a `fonts/` dir and
+  reference files directly.
+- Adding a new subsystem = add a pure function + register it in the tool manifest +
+  a test asserting it mutates the `Timeline` correctly. Never wire a subsystem
+  straight to an output file.

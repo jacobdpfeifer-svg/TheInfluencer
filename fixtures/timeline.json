@@ -1,0 +1,19 @@
+{
+  "tracks": [
+    {
+      "name": "v1",
+      "kind": "video",
+      "items": [
+        { "id": "clip-s1", "start": 0.0, "end": 2.5, "payload": { "shot": "s1" } },
+        { "id": "clip-s2", "start": 2.5, "end": 5.0, "payload": { "shot": "s2" } }
+      ]
+    },
+    {
+      "name": "captions",
+      "kind": "text",
+      "items": [
+        { "id": "cap-1", "start": 0.0, "end": 1.5, "payload": { "content": "3 months in", "style": "karaoke" } }
+      ]
+    }
+  ]
+}

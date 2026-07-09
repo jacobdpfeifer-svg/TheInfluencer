@@ -1,0 +1,27 @@
+---
+description: Rules for the director module — the single place an LLM is called, to turn features + preferences + tool manifest into a validated EditPlan
+globs:
+  - autoedit/director/**
+alwaysApply: false
+---
+
+# Director rules
+
+The director is the ONLY module that calls an LLM. Keep it thin.
+
+- **Input:** `ContentFeatures` + `StyleProfile` + tool manifest.
+  **Output:** a validated `EditPlan`. Nothing else. No pixels, ever.
+- The LLM call sits behind a **stubbed interface** so the whole pipeline runs and
+  tests with AI disabled. Tests default to the stub.
+- **Always validate** the model's output against the `EditPlan` Pydantic schema.
+  Reject any op that names a tool absent from the manifest or params outside schema.
+- On invalid output OR confidence below threshold, fall back to
+  `heuristic_plan(StyleProfile, ContentFeatures)` — a deterministic planner that
+  must ALWAYS return a valid `EditPlan`. The system never hangs and never crashes
+  on bad model output.
+- Build the brief as **compact JSON** (boolean flags + quantized buckets like
+  `motion: low|med|high`). Aim for **one or two calls per video** — never per-frame
+  or per-shot.
+- Low temperature for structural decisions (assignment, ordering); higher allowed
+  only for caption/text generation. **Log the exact prompt + response** on every
+  call for reproducibility.

@@ -1,0 +1,36 @@
+[project]
+name = "autoedit"
+version = "0.1.0"
+description = "Autonomous short-form video editor: learns editing style from reference videos, then auto-edits raw footage to match."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0,<3.0",
+    "scenedetect>=0.6",         # pacing extractor: cut detection
+    "opencv-python-headless>=4.8,<5",  # framing extractor: frames, faces, motion (5.x dropped CascadeClassifier)
+    "librosa>=0.10",            # audio extractor: BPM, beats, RMS
+    "soundfile>=0.12",          # librosa's preferred audio decode backend
+    "pytesseract>=0.3",         # text extractor: OCR (requires the `tesseract` binary on PATH)
+    "numpy",
+    "scipy",
+    "moviepy>=2.0,<3.0",        # renderer: single-pass composite (v1 API is incompatible, never use it)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+# Added in a later build step, pinned here for reference:
+# opentimelineio      # internal Timeline model
+
+[project.scripts]
+autoedit = "autoedit.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["autoedit*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

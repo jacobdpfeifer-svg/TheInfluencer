@@ -1,0 +1,31 @@
+---
+description: Rules for ingest and the shared feature extractors (pacing, framing, audio, on-screen text) used by BOTH the learning and editing phases
+globs:
+  - autoedit/extractors/**
+  - autoedit/ingest.py
+alwaysApply: false
+---
+
+# Extractor rules
+
+These functions turn media into features. They are the ONLY code allowed to
+decode pixels or audio.
+
+- Each extractor is a **pure function** `(path | frames) -> typed features`. No
+  side effects, no writing files, no global state.
+- Extractors **measure, they do not decide.** Pre-trained utility models (OCR,
+  face detection, voice-activity / speech-to-text) are measurement instruments,
+  not "the intelligence." Never let them choose edits — that belongs to the
+  director, and only through the heuristic-or-LLM plan.
+- The **same extractors serve Phase A (learning) and Phase B (editing).** Do not
+  fork them per phase; point them at different inputs.
+- Emit **per-shot records**:
+  - Pacing: cut list, median shot length, motion curve (PySceneDetect + frame diff).
+  - Framing: aspect ratio, face count/position, shot scale (`close` / `wide`).
+  - Audio: BPM, beat times, RMS energy curve, `speech` vs `music` flag.
+  - Text: on-screen text position, timing relative to cuts/speech, and **style
+    class** (`karaoke` word-by-word vs `static` title) — NOT the exact font.
+- Prefer `ffprobe` / `ffmpeg` / PySceneDetect over decoding frames in pure Python
+  where possible (speed and memory).
+- Every extractor has a unit test against a small fixture in `/fixtures`. Tests
+  must NOT require rendering.

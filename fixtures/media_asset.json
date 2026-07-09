@@ -1,0 +1,10 @@
+{
+  "path": "raw/clip_001.mp4",
+  "type": "video",
+  "duration": 12.5,
+  "width": 1080,
+  "height": 1920,
+  "fps": 30.0,
+  "codec": "h264",
+  "audio_channels": 2
+}

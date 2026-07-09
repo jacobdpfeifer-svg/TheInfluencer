@@ -1,0 +1,9 @@
+{
+  "ops": [
+    { "tool": "cutter", "params": { "keep": ["s1", "s2"], "sync": "beat" } },
+    { "tool": "text", "params": { "content": "3 months in", "style": "karaoke", "anchor": "top", "start": 0.0 } },
+    { "tool": "emoji", "params": { "glyph": "\ud83d\udd25", "at": 14.2 } },
+    { "tool": "effect", "params": { "kind": "zoom_in", "shot": "s1" } }
+  ],
+  "confidence": 0.88
+}

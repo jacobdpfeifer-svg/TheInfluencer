@@ -1,0 +1,39 @@
+{
+  "pacing": {
+    "duration": 9.0,
+    "cuts": [3.0, 6.0],
+    "shot_bounds": [[0.0, 3.0], [3.0, 6.0], [6.0, 9.0]],
+    "shot_lengths": [3.0, 3.0, 3.0],
+    "shot_len_median": 3.0,
+    "motion_curve": [0.05, 0.04, 0.06]
+  },
+  "framing": {
+    "aspect": 0.5,
+    "shots": [
+      {"start": 0.0, "end": 3.0, "faces": 1, "face_positions": [[0.5, 0.5]], "scale": "close", "camera": "static", "brightness": 0.42, "sharpness": 75.0},
+      {"start": 3.0, "end": 6.0, "faces": 0, "face_positions": [], "scale": "wide", "camera": "static", "brightness": 0.38, "sharpness": 68.0},
+      {"start": 6.0, "end": 9.0, "faces": 1, "face_positions": [[0.52, 0.48]], "scale": "close", "camera": "static", "brightness": 0.40, "sharpness": 71.0}
+    ]
+  },
+  "audio": {
+    "duration": 9.0,
+    "bpm": null,
+    "beat_times": [],
+    "rms_curve": [0.020, 0.025, 0.022, 0.024, 0.023],
+    "rms_times": [0.0, 2.0, 4.0, 6.0, 8.0],
+    "has_speech": true
+  },
+  "text": {
+    "shots": [
+      {"start": 0.0, "end": 3.0, "style": "static", "events": [
+        {"text": "WATCH TILL THE END", "start": 0.0, "end": 2.8, "anchor": "bottom"}
+      ]},
+      {"start": 3.0, "end": 6.0, "style": "static", "events": [
+        {"text": "THIS CHANGED MY LIFE", "start": 3.0, "end": 5.8, "anchor": "bottom"}
+      ]},
+      {"start": 6.0, "end": 9.0, "style": "static", "events": [
+        {"text": "THANKS FOR WATCHING", "start": 6.0, "end": 8.8, "anchor": "bottom"}
+      ]}
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "aspect": 0.5625,
+  "shot_len_median": 2.3,
+  "shot_len_spread": 0.8,
+  "cut_on_beat": true,
+  "caption_style_freq": { "karaoke": 0.7, "static": 0.3 },
+  "caption_density": 0.4,
+  "text_amount": 1.2,
+  "effect_freq": 0.15,
+  "sample_count": 12
+}

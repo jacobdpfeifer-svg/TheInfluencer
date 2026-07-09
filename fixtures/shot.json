@@ -1,0 +1,12 @@
+{
+  "id": "s1",
+  "source": "raw/clip_001.mp4",
+  "in": 0.0,
+  "out": 2.5,
+  "dur": 2.5,
+  "motion": 0.42,
+  "brightness": 0.65,
+  "sharpness": 120.3,
+  "faces": 1,
+  "scale": "close"
+}
