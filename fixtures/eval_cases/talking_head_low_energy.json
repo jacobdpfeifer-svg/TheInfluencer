@@ -1,0 +1,30 @@
+{
+  "name": "talking_head_low_energy",
+  "features": {
+    "aspect": 0.5625,
+    "has_speech": true,
+    "music_bpm": null,
+    "shots": [
+      { "id": "s1", "source": "raw/clip_002.mp4", "in": 0.0, "out": 8.0, "dur": 8.0, "motion": 0.05, "brightness": 0.6, "sharpness": 130.0, "faces": 1, "scale": "close" },
+      { "id": "s2", "source": "raw/clip_002.mp4", "in": 8.0, "out": 10.5, "dur": 2.5, "motion": 0.2, "brightness": 0.5, "sharpness": 80.0, "faces": 0, "scale": "wide" },
+      { "id": "s3", "source": "raw/clip_002.mp4", "in": 10.5, "out": 17.0, "dur": 6.5, "motion": 0.04, "brightness": 0.62, "sharpness": 128.0, "faces": 1, "scale": "close" }
+    ],
+    "motion": "low",
+    "is_vertical": true,
+    "has_face": true,
+    "beat_times": [],
+    "has_text": true,
+    "text_style": "static"
+  },
+  "style": {
+    "aspect": 0.5625,
+    "shot_len_median": 6.0,
+    "shot_len_spread": 1.5,
+    "cut_on_beat": false,
+    "caption_style_freq": { "karaoke": 0.1, "static": 0.9 },
+    "caption_density": 0.1,
+    "text_amount": 0.6,
+    "effect_freq": 0.05,
+    "sample_count": 8
+  }
+}

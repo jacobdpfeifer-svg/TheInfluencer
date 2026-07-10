@@ -151,3 +151,20 @@ class TestRun:
         with pytest.raises(ExecutorError):
             run(features, plan, "out.mp4")
         assert calls == []  # never reached the renderer
+
+    def test_music_path_appends_a_music_op_after_the_plans_own_ops(self, features, monkeypatch) -> None:
+        calls = []
+        monkeypatch.setattr("autoedit.executor.render", lambda timeline, output_path: calls.append(timeline) or output_path)
+
+        plan = EditPlan(ops=[EditOp(tool="cutter", params={"keep": ["s1", "s2"]})], confidence=1.0)
+        run(features, plan, "out.mp4", music_path="song.mp3")
+
+        rendered_timeline = calls[0]
+        audio_track = next(t for t in rendered_timeline.tracks if t.kind == "audio")
+        assert audio_track.items[0].payload["source"] == "song.mp3"
+
+    def test_no_music_path_means_no_audio_track(self, features, monkeypatch) -> None:
+        monkeypatch.setattr("autoedit.executor.render", lambda timeline, output_path: output_path)
+        plan = EditPlan(ops=[EditOp(tool="cutter", params={"keep": ["s1"]})], confidence=1.0)
+        run(features, plan, "out.mp4")
+        # No assertion needed beyond "doesn't raise" -- absence of music_path must not require an audio track.

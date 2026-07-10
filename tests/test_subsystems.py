@@ -16,6 +16,8 @@ from autoedit.subsystems import TOOL_MANIFEST, TOOL_PARAMS_MANIFEST
 from autoedit.subsystems.cutter import cut
 from autoedit.subsystems.effects import EffectParams, apply_effect
 from autoedit.subsystems.emoji_adder import add_emoji
+from autoedit.subsystems.music import MusicParams, add_music
+from autoedit.subsystems.reframe import ReframeParams, apply_reframe
 from autoedit.subsystems.text_adder import add_text
 from autoedit.subsystems.transitions import apply_transition
 
@@ -69,6 +71,48 @@ class TestCutter:
         with pytest.raises(ValueError, match="nope"):
             cut(timeline, {"keep": ["nope"]})
 
+    def test_trim_caps_a_shot_longer_than_its_cap(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 8.0), ("s2", 8.0, 10.0))
+
+        result = cut(timeline, {"keep": ["s1", "s2"], "trim": {"s1": 3.0}})
+
+        video_track = result.tracks[0]
+        assert (video_track.items[0].start, video_track.items[0].end) == (0.0, 3.0)
+        # s2 was untouched (not in `trim`) and starts right after s1's trimmed span.
+        assert (video_track.items[1].start, video_track.items[1].end) == (3.0, 5.0)
+
+    def test_trim_shrinks_the_payloads_out_point_from_its_in_point(self) -> None:
+        timeline = Timeline(
+            tracks=[
+                Track(
+                    name="v1", kind="video",
+                    items=[TimelineItem(id="s1", start=0.0, end=8.0, payload={"shot": "s1", "in": 2.0, "out": 10.0})],
+                )
+            ]
+        )
+
+        result = cut(timeline, {"keep": ["s1"], "trim": {"s1": 3.0}})
+
+        assert result.tracks[0].items[0].payload["out"] == pytest.approx(5.0)  # in(2.0) + capped duration(3.0)
+
+    def test_trim_is_a_noop_for_a_shot_already_shorter_than_its_cap(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+
+        result = cut(timeline, {"keep": ["s1"], "trim": {"s1": 10.0}})
+
+        assert (result.tracks[0].items[0].start, result.tracks[0].items[0].end) == (0.0, 2.0)
+        assert "out" not in result.tracks[0].items[0].payload
+
+    def test_trim_ignores_shot_ids_not_in_keep(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        result = cut(timeline, {"keep": ["s1"], "trim": {"unrelated-shot": 1.0}})
+        assert (result.tracks[0].items[0].start, result.tracks[0].items[0].end) == (0.0, 2.0)
+
+    def test_trim_value_must_be_positive(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        with pytest.raises(ValueError, match="> 0"):
+            cut(timeline, {"keep": ["s1"], "trim": {"s1": 0.0}})
+
     def test_beat_sync_snaps_cut_point_within_tolerance(self) -> None:
         # Natural cut point (after s1) lands at t=2.0; nearest beat 2.1 is within tolerance.
         timeline = _video_timeline(("s1", 0.0, 2.0), ("s2", 2.0, 4.0))
@@ -94,6 +138,26 @@ class TestCutter:
         result = cut(timeline, {"keep": ["s1", "s2"], "beat_times": [2.1]})
 
         assert result.tracks[0].items[0].end == pytest.approx(2.0)
+
+    def test_beat_sync_falls_back_to_the_timelines_own_beat_times_when_params_omit_them(self) -> None:
+        timeline = Timeline(
+            tracks=[t for t in _video_timeline(("s1", 0.0, 2.0), ("s2", 2.0, 4.0)).tracks],
+            beat_times=[2.1],
+        )
+
+        result = cut(timeline, {"keep": ["s1", "s2"], "sync": "beat"})
+
+        assert result.tracks[0].items[0].end == pytest.approx(2.1)
+
+    def test_explicit_params_beat_times_take_priority_over_the_timelines_own(self) -> None:
+        timeline = Timeline(
+            tracks=[t for t in _video_timeline(("s1", 0.0, 2.0), ("s2", 2.0, 4.0)).tracks],
+            beat_times=[10.0],  # would leave the cut point untouched if used
+        )
+
+        result = cut(timeline, {"keep": ["s1", "s2"], "sync": "beat", "beat_times": [2.1]})
+
+        assert result.tracks[0].items[0].end == pytest.approx(2.1)
 
     def test_rejects_unknown_params(self) -> None:
         timeline = _video_timeline(("s1", 0.0, 2.0))
@@ -339,6 +403,126 @@ class TestTransitions:
         assert any(t.kind == "transition" for t in result.tracks)
 
 
+# --- reframe ---------------------------------------------------------------
+
+
+class TestReframe:
+    @staticmethod
+    def _reframe_item(timeline: Timeline):
+        return next(t for t in timeline.tracks if t.kind == "reframe").items[0]
+
+    def test_default_kind_is_center_crop_at_9x16(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        result = apply_reframe(timeline, {"shot": "s1"})
+        item = self._reframe_item(result)
+        assert item.payload["kind"] == "center_crop"
+        assert item.payload["target_aspect"] == pytest.approx(9 / 16)
+
+    def test_span_is_taken_from_the_shots_video_item(self) -> None:
+        timeline = _video_timeline(("s1", 1.0, 3.5))
+        result = apply_reframe(timeline, {"shot": "s1", "kind": "rule_of_thirds"})
+        item = self._reframe_item(result)
+        assert (item.start, item.end) == (1.0, 3.5)
+
+    def test_explicit_span_overrides_shot_lookup(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        result = apply_reframe(timeline, {"start": 0.5, "end": 1.5, "kind": "fit"})
+        item = self._reframe_item(result)
+        assert (item.start, item.end) == (0.5, 1.5)
+
+    def test_custom_target_aspect_is_carried_onto_the_payload(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        result = apply_reframe(timeline, {"shot": "s1", "target_aspect": 16 / 9})
+        assert self._reframe_item(result).payload["target_aspect"] == pytest.approx(16 / 9)
+
+    def test_missing_shot_raises(self) -> None:
+        timeline = _video_timeline(("s2", 2.0, 4.0))
+        with pytest.raises(ValueError, match="s1"):
+            apply_reframe(timeline, {"shot": "s1"})
+
+    def test_neither_shot_nor_explicit_span_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            ReframeParams.model_validate({"kind": "fit"})
+
+    def test_rejects_unknown_kind(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        with pytest.raises(ValidationError):
+            apply_reframe(timeline, {"shot": "s1", "kind": "dutch_angle"})
+
+    def test_incrementing_ids_across_calls(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0), ("s2", 2.0, 4.0))
+        timeline = apply_reframe(timeline, {"shot": "s1"})
+        result = apply_reframe(timeline, {"shot": "s2"})
+        reframe_track = next(t for t in result.tracks if t.kind == "reframe")
+        assert [item.id for item in reframe_track.items] == ["reframe-1", "reframe-2"]
+
+    def test_does_not_disturb_other_tracks(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        result = apply_reframe(timeline, {"shot": "s1"})
+        assert any(t.kind == "video" for t in result.tracks)
+        assert any(t.kind == "reframe" for t in result.tracks)
+
+
+# --- music -------------------------------------------------------------
+
+
+class TestMusic:
+    @staticmethod
+    def _music_item(timeline: Timeline):
+        return next(t for t in timeline.tracks if t.kind == "audio").items[0]
+
+    def test_defaults_span_to_the_video_tracks_total_duration(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0), ("s2", 2.0, 5.0))
+        result = add_music(timeline, {"source": "song.mp3"})
+        item = self._music_item(result)
+        assert (item.start, item.end) == (0.0, 5.0)
+        assert item.payload["source"] == "song.mp3"
+
+    def test_explicit_duration_overrides_the_video_track_span(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        result = add_music(timeline, {"source": "song.mp3", "duration": 10.0})
+        assert self._music_item(result).end == 10.0
+
+    def test_offset_and_volume_are_carried_onto_the_payload(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        result = add_music(timeline, {"source": "song.mp3", "offset": 8.0, "volume": 0.3})
+        item = self._music_item(result)
+        assert item.payload["in"] == pytest.approx(8.0)
+        assert item.payload["out"] == pytest.approx(10.0)
+        assert item.payload["volume"] == pytest.approx(0.3)
+
+    def test_default_volume_is_below_unity(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        result = add_music(timeline, {"source": "song.mp3"})
+        assert 0 < self._music_item(result).payload["volume"] < 1.0
+
+    def test_empty_video_track_and_no_explicit_duration_raises(self) -> None:
+        timeline = Timeline(tracks=[])
+        with pytest.raises(ValueError, match="duration"):
+            add_music(timeline, {"source": "song.mp3"})
+
+    def test_volume_out_of_range_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            MusicParams.model_validate({"source": "song.mp3", "volume": 5.0})
+
+    def test_missing_source_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            MusicParams.model_validate({})
+
+    def test_incrementing_ids_across_calls(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        timeline = add_music(timeline, {"source": "a.mp3"})
+        result = add_music(timeline, {"source": "b.mp3"})
+        audio_track = next(t for t in result.tracks if t.kind == "audio")
+        assert [item.id for item in audio_track.items] == ["music-1", "music-2"]
+
+    def test_does_not_disturb_other_tracks(self) -> None:
+        timeline = _video_timeline(("s1", 0.0, 2.0))
+        result = add_music(timeline, {"source": "song.mp3"})
+        assert any(t.kind == "video" for t in result.tracks)
+        assert any(t.kind == "audio" for t in result.tracks)
+
+
 # --- tool manifest / integration -----------------------------------------
 
 
@@ -351,6 +535,14 @@ class TestToolManifest:
     def test_manifest_includes_the_transition_tool(self) -> None:
         assert "transition" in TOOL_MANIFEST
         assert "transition" in TOOL_PARAMS_MANIFEST
+
+    def test_manifest_includes_the_reframe_tool(self) -> None:
+        assert "reframe" in TOOL_MANIFEST
+        assert "reframe" in TOOL_PARAMS_MANIFEST
+
+    def test_manifest_includes_the_music_tool(self) -> None:
+        assert "music" in TOOL_MANIFEST
+        assert "music" in TOOL_PARAMS_MANIFEST
 
     def test_dispatching_a_transition_op_through_the_manifest(self) -> None:
         timeline = _video_timeline(("s1", 0.0, 2.0), ("s2", 2.0, 4.0))

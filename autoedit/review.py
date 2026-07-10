@@ -13,6 +13,11 @@ same `ContentFeatures` the plan was built from) for an accurate check using
 real per-shot durations; without it, `check_plan` still works, falling back
 to a generic per-shot duration estimate (documented below) for a rougher
 — but still meaningful and non-circular — check.
+
+Checks: caption density, text amount, implied cut pacing (all relative to
+the learned `StyleProfile`), and total duration against a fixed, style-
+independent short-form budget (`StyleProfile` has no total-duration field
+of its own to check against).
 """
 
 from __future__ import annotations
@@ -44,6 +49,16 @@ _ZERO_TARGET_EPSILON = 0.02
 # How many multiples of `style.shot_len_spread` the plan's implied average
 # shot length may differ from `style.shot_len_median` before being flagged.
 _SHOT_LEN_SPREAD_SLACK = 1.5
+
+# Absolute short-form duration budget, independent of the learned style
+# (StyleProfile has no total-duration field to check against — see
+# `.cursor/rules/director.mdc`'s "15-60s" guidance, echoed in
+# `director/prompts.py`'s SYSTEM_PROMPT). Deliberately a little more
+# permissive than that guidance on both ends, so this only ever catches a
+# plan that's genuinely degenerate (near-empty) or runaway (way over any
+# platform's "short-form" definition), not a merely-atypical one.
+_MIN_PLAN_DURATION_SEC = 3.0
+_MAX_PLAN_DURATION_SEC = 90.0
 
 
 class ReviewResult(BaseModel):
@@ -86,6 +101,13 @@ def check_plan(
     }
 
     warnings: list[str] = []
+    if not (_MIN_PLAN_DURATION_SEC <= duration <= _MAX_PLAN_DURATION_SEC):
+        estimated_note = " (estimated durations)" if duration_is_estimated else ""
+        warnings.append(
+            f"total duration {duration:.2f}s is outside the short-form budget "
+            f"[{_MIN_PLAN_DURATION_SEC:.0f}s, {_MAX_PLAN_DURATION_SEC:.0f}s]{estimated_note}"
+        )
+
     if duration > 0:
         caption_density = caption_count / duration
         text_amount = text_covered / duration

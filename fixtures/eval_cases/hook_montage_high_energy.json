@@ -1,0 +1,31 @@
+{
+  "name": "hook_montage_high_energy",
+  "features": {
+    "aspect": 0.5625,
+    "has_speech": false,
+    "music_bpm": 128.0,
+    "shots": [
+      { "id": "s1", "source": "raw/clip_001.mp4", "in": 0.0, "out": 1.5, "dur": 1.5, "motion": 0.8, "brightness": 0.6, "sharpness": 110.0, "faces": 1, "scale": "close" },
+      { "id": "s2", "source": "raw/clip_001.mp4", "in": 1.5, "out": 3.0, "dur": 1.5, "motion": 0.5, "brightness": 0.55, "sharpness": 90.0, "faces": 0, "scale": "wide" },
+      { "id": "s3", "source": "raw/clip_001.mp4", "in": 3.0, "out": 4.5, "dur": 1.5, "motion": 0.6, "brightness": 0.5, "sharpness": 95.0, "faces": 0, "scale": "wide" },
+      { "id": "s4", "source": "raw/clip_001.mp4", "in": 4.5, "out": 6.5, "dur": 2.0, "motion": 0.9, "brightness": 0.65, "sharpness": 100.0, "faces": 1, "scale": "close" }
+    ],
+    "motion": "high",
+    "is_vertical": true,
+    "has_face": true,
+    "beat_times": [0.0, 0.47, 0.94, 1.41, 1.88, 2.35, 2.82, 3.29, 3.76, 4.23, 4.7, 5.17, 5.64, 6.11],
+    "has_text": false,
+    "text_style": "none"
+  },
+  "style": {
+    "aspect": 0.5625,
+    "shot_len_median": 1.5,
+    "shot_len_spread": 0.4,
+    "cut_on_beat": true,
+    "caption_style_freq": { "karaoke": 0.8, "static": 0.2 },
+    "caption_density": 0.3,
+    "text_amount": 0.4,
+    "effect_freq": 0.6,
+    "sample_count": 10
+  }
+}

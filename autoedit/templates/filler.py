@@ -7,9 +7,23 @@ greedy — match, and turns the result into an `EditPlan`: one `cutter` op
 (shots kept in template-slot order, synced per the template's
 `music.cut_on`), one `effect` op per filled slot that names an `effect`,
 one `transition` op per adjacent filled-slot boundary that names a
-`transition_in`/`transition_out`, and one `text` op per template text slot
-using its placeholder copy (the director/LLM replaces this with real
-content later — see `.cursor/rules/director.mdc`).
+`transition_in`/`transition_out`, one `reframe` op per filled slot whose
+`transform` isn't `"none"` (scaled to the template's own `target_aspect`,
+so mixed-aspect pooled footage — see `content.extract_pool` — always lands
+on one consistent output canvas), and one `text` op per template text slot, with its content resolved via
+`templates.captions.generate_caption_copy` (a deterministic, footage-derived
+floor under a purpose tag like `"TITLE"`/`"CTA"` — the director/LLM is free
+to write better, situational copy on top of this; see
+`.cursor/rules/director.mdc`).
+
+Duration budgeting: a slot's `duration`/`max_duration` becomes a `cutter`
+`trim` cap (see `subsystems/cutter.py`) whenever the assigned shot is
+LONGER than that budget -- e.g. a 3s-max "hook" slot never lets an 8s shot
+blow past it. A slot's `min_duration` can't be enforced the same way
+(`cutter` only ever shortens footage, it can't fabricate more), so it's
+instead a soft penalty in `_slot_shot_score`: a too-short shot is still
+assignable (nothing here can *require* enough footage exists), just a
+worse fit than a shot that actually meets the slot's floor.
 """
 
 from __future__ import annotations
@@ -22,6 +36,7 @@ from autoedit.models.plan import EditOp, EditPlan
 from autoedit.models.shot import Shot
 from autoedit.models.style_profile import StyleProfile
 from autoedit.models.template import Template, TemplateSlot
+from autoedit.templates.captions import generate_caption_copy
 
 # A template-filled plan is more structured than the bare rule-based floor
 # but still not AI-directed -- confidence sits between
@@ -38,6 +53,11 @@ _MOTION_WEIGHT = 2.0
 _FACE_BONUS = 1.5
 _CLOSE_SCALE_BONUS = 1.0
 _WIDE_SCALE_PENALTY_FOR_TALKING_HEAD = 0.75
+# A too-short shot is discouraged, never disqualified -- the penalty is
+# clamped so it can never bring a real pairing's score down to (or below)
+# `_BASE_SCORE`, preserving `_assign_shots_to_slots`'s "real always beats
+# dummy" invariant (see its docstring).
+_SHORT_SHOT_PENALTY = 0.5
 
 # hook/high_energy: "prefers high motion + faces" (per the spec). `payoff`
 # (the climactic closing beat of a montage) leans the same way.
@@ -61,7 +81,8 @@ def fill_template(template: Template, features: ContentFeatures, style: StylePro
     ops = [_cutter_op(template, features, assignment)]
     ops.extend(_effect_ops(assignment))
     ops.extend(_transition_ops(assignment))
-    ops.extend(_text_ops(template))
+    ops.extend(_reframe_ops(template, assignment))
+    ops.extend(_text_ops(template, features))
 
     return EditPlan(ops=ops, confidence=TEMPLATE_FILL_CONFIDENCE)
 
@@ -123,6 +144,9 @@ def _slot_shot_score(slot: TemplateSlot, shot: Shot) -> float:
             score += _FACE_BONUS
     # else: "b_roll"/"any" -- prefers anything, so the base score alone stands.
 
+    if shot.dur < slot.min_duration:
+        score = max(score - _SHORT_SHOT_PENALTY, _BASE_SCORE)
+
     return score
 
 
@@ -132,7 +156,23 @@ def _cutter_op(template: Template, features: ContentFeatures, assignment: list[t
     params: dict[str, object] = {"keep": keep, "sync": sync}
     if sync == "beat":
         params["beat_times"] = features.beat_times
+    trim = {shot.id: cap for slot, shot in assignment if (cap := _slot_duration_cap(slot, shot)) is not None}
+    if trim:
+        params["trim"] = trim
     return EditOp(tool="cutter", params=params)
+
+
+def _slot_duration_cap(slot: TemplateSlot, shot: Shot) -> float | None:
+    """A `cutter` `trim` cap (seconds) for `shot` in `slot`, or `None` if it doesn't need one.
+
+    `slot.duration`, when set, is an exact target (both a floor and a
+    ceiling as far as `cutter` is concerned, since it can only shorten); an
+    unset `duration` falls back to `slot.max_duration` alone, a ceiling
+    only. Either way, no cap is emitted unless the shot actually exceeds it
+    -- a shot that's already within budget is left untouched.
+    """
+    budget = slot.duration if slot.duration is not None else slot.max_duration
+    return budget if shot.dur > budget else None
 
 
 def _effect_ops(assignment: list[tuple[TemplateSlot, Shot]]) -> list[EditOp]:
@@ -160,11 +200,34 @@ def _transition_ops(assignment: list[tuple[TemplateSlot, Shot]]) -> list[EditOp]
     return ops
 
 
-def _text_ops(template: Template) -> list[EditOp]:
+def _reframe_ops(template: Template, assignment: list[tuple[TemplateSlot, Shot]]) -> list[EditOp]:
+    """One `reframe` op per filled slot with a non-`"none"` `transform`.
+
+    A slot with `transform="none"` emits nothing — the renderer already
+    normalizes every shot to *some* canvas by default (see
+    `subsystems/reframe.py`'s docstring), so "none" just means "don't
+    override that default," not "skip normalization."
+    """
+    return [
+        EditOp(
+            tool="reframe",
+            params={"kind": slot.transform, "shot": shot.id, "target_aspect": template.target_aspect},
+        )
+        for slot, shot in assignment
+        if slot.transform != "none"
+    ]
+
+
+def _text_ops(template: Template, features: ContentFeatures) -> list[EditOp]:
     return [
         EditOp(
             tool="text",
-            params={"content": text_slot.placeholder, "style": text_slot.style, "anchor": text_slot.anchor, "start": 0.0},
+            params={
+                "content": generate_caption_copy(features, text_slot.placeholder),
+                "style": text_slot.style,
+                "anchor": text_slot.anchor,
+                "start": 0.0,
+            },
         )
         for text_slot in template.text_slots
     ]

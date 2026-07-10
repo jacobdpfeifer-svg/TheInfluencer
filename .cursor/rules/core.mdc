@@ -14,7 +14,9 @@ architecture, schemas, and build order.
 - Python 3.11+, `ffmpeg` + `ffprobe` (system deps)
 - PySceneDetect (cuts/pacing), librosa (audio/beats), OpenCV (framing/faces),
   an OCR lib (on-screen text)
-- OpenTimelineIO = internal timeline model
+- Internal timeline model: a plain Pydantic model (`models/timeline.py`) that
+  mirrors OpenTimelineIO's track/clip shape — NOT the `opentimelineio`
+  package itself, which is not a dependency
 - MoviePy **2.x only** for the single final render (v1 API is incompatible — never use v1)
 - Pydantic **v2** for every inter-stage object
 

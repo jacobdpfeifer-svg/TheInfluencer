@@ -36,9 +36,11 @@ def build_initial_timeline(features: ContentFeatures) -> Timeline:
     Each item's payload carries `shot`/`source`/`in`/`out` — everything
     `cutter`, `effects`, and `renderer.build_render_plan` need downstream
     (see `.cursor/rules/subsystems.mdc` and `fixtures/timeline.json`). Also
-    carries `features.beat_times` onto the Timeline itself, so the audio's
-    detected beats travel with the edit rather than needing to be re-threaded
-    through every op's params by hand.
+    carries `features.beat_times` onto the Timeline itself: `heuristic_plan`/
+    `fill_template` currently thread beats through `EditOp.params` explicitly
+    for clarity, but `cutter.cut` falls back to this Timeline-level copy when
+    a plan's own `CutterParams.beat_times` is empty, so a beat grid set once
+    here still works even for a plan that never mentions beats itself.
     """
     items = [
         TimelineItem(
@@ -76,12 +78,22 @@ def run(
     output_path: str | Path,
     *,
     manifest: ToolManifest = TOOL_MANIFEST,
+    music_path: str | Path | None = None,
 ) -> Path:
     """Seed a Timeline from `features`, execute `plan` against it, render once to `output_path`.
 
     This is the one call that goes all the way from features + a plan to an
     actual mp4 — the renderer only ever runs here, exactly once.
+
+    `music_path`, if given, appends a `music` op AFTER the plan's own ops —
+    it's a runtime input from the CLI (see `cli.make`'s `--music` flag), not
+    a director/template decision, so it's applied here rather than being
+    threaded through `EditPlan.ops` (the director never sees or picks the
+    music file itself; it only ever sees the beat grid *derived* from it —
+    see `cli.make`'s `extract_audio(music_path)` override).
     """
     timeline = build_initial_timeline(features)
     timeline = execute(plan, timeline, manifest=manifest)
+    if music_path is not None:
+        timeline = manifest["music"](timeline, {"source": str(music_path)})
     return render(timeline, output_path)

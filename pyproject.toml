@@ -23,8 +23,6 @@ dev = [
     "pytest>=8.0",
     "fonttools>=4.0",           # render smoke test: assert emoji font covers emoji glyphs
 ]
-# Added in a later build step, pinned here for reference:
-# opentimelineio      # internal Timeline model
 
 [project.scripts]
 autoedit = "autoedit.cli:main"

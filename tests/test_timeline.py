@@ -70,6 +70,11 @@ def test_transition_is_a_valid_track_kind():
     assert track.kind == "transition"
 
 
+def test_reframe_is_a_valid_track_kind():
+    track = Track(name="reframe", kind="reframe", items=[TimelineItem(id="reframe-1", start=0.0, end=2.0, payload={})])
+    assert track.kind == "reframe"
+
+
 def test_rejects_nested_invalid_item_in_track(timeline_data):
     timeline_data["tracks"][0]["items"][0]["end"] = 0.0
     timeline_data["tracks"][0]["items"][0]["start"] = 0.0

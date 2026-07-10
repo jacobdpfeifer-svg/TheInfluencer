@@ -68,8 +68,24 @@ def test_caption_density_and_text_amount_are_averaged_across_videos(three_videos
     assert profile.text_amount == pytest.approx((1.0 + 8.4 / 9 + 3.9 / 6) / 3)
 
 
-def test_effect_freq_defaults_to_zero_with_no_effects_extractor(three_videos):
+def test_effect_freq_is_averaged_moving_camera_shots_per_second(three_videos):
+    # per-video moving-shots/duration: fast_cuts=4/2=2.0, slow_static=0/9=0.0, mixed=1/6=0.1667.
     profile = aggregate(three_videos)
+    assert profile.effect_freq == pytest.approx((2.0 + 0.0 + 1 / 6) / 3)
+
+
+def test_effect_freq_is_zero_when_every_shot_reads_static(video_features_slow_static_data):
+    video = VideoFeatures(**video_features_slow_static_data)
+    with pytest.warns(UserWarning, match="single reference"):
+        profile = aggregate([video])
+    assert profile.effect_freq == 0.0
+
+
+def test_effect_freq_zero_duration_video_contributes_zero(video_features_fast_cuts_data):
+    video = VideoFeatures(**video_features_fast_cuts_data)
+    video.pacing.duration = 0.0
+    with pytest.warns(UserWarning, match="single reference"):
+        profile = aggregate([video])
     assert profile.effect_freq == 0.0
 
 

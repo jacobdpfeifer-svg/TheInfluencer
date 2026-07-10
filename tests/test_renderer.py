@@ -12,7 +12,7 @@ import pytest
 
 from autoedit import renderer
 from autoedit.models.timeline import Timeline, TimelineItem, Track
-from autoedit.renderer import EffectInstruction, VideoSegment, build_render_plan
+from autoedit.renderer import EffectInstruction, TextOverlay, VideoSegment, build_render_plan
 
 
 def _timeline(*tracks: Track) -> Timeline:
@@ -150,6 +150,98 @@ class TestBuildRenderPlan:
         )
         plan = build_render_plan(_timeline(track))
         assert [t.between for t in plan.transitions] == [["s1", "s2"], ["s2", "s3"]]
+
+    def test_reframes_resolved_from_the_reframe_track(self) -> None:
+        track = Track(
+            name="reframe",
+            kind="reframe",
+            items=[
+                TimelineItem(
+                    id="reframe-1", start=0.0, end=2.0,
+                    payload={"kind": "rule_of_thirds", "target_aspect": 9 / 16, "shot": "s1"},
+                )
+            ],
+        )
+        plan = build_render_plan(_timeline(track))
+        assert len(plan.reframes) == 1
+        reframe = plan.reframes[0]
+        assert (reframe.kind, reframe.shot, reframe.start, reframe.end) == ("rule_of_thirds", "s1", 0.0, 2.0)
+        assert reframe.target_aspect == pytest.approx(9 / 16)
+
+    def test_reframes_default_to_empty(self) -> None:
+        plan = build_render_plan(Timeline(tracks=[]))
+        assert plan.reframes == []
+
+    def test_reframes_default_kind_and_aspect_when_payload_omits_them(self) -> None:
+        track = Track(name="reframe", kind="reframe", items=[TimelineItem(id="reframe-1", start=0.0, end=1.0, payload={})])
+        plan = build_render_plan(_timeline(track))
+        assert plan.reframes[0].kind == "center_crop"
+        assert plan.reframes[0].target_aspect == pytest.approx(9 / 16)
+
+    def test_audio_resolved_from_the_audio_track(self) -> None:
+        track = Track(
+            name="music",
+            kind="audio",
+            items=[
+                TimelineItem(
+                    id="music-1", start=0.0, end=5.0,
+                    payload={"source": "song.mp3", "in": 8.0, "out": 13.0, "volume": 0.6},
+                )
+            ],
+        )
+        plan = build_render_plan(_timeline(track))
+        assert len(plan.audio) == 1
+        audio = plan.audio[0]
+        assert (audio.source, audio.in_, audio.out_) == ("song.mp3", 8.0, 13.0)
+        assert (audio.start, audio.end) == (0.0, 5.0)
+        assert audio.volume == pytest.approx(0.6)
+
+    def test_audio_missing_source_raises(self) -> None:
+        track = Track(name="music", kind="audio", items=[TimelineItem(id="music-1", start=0.0, end=5.0, payload={})])
+        with pytest.raises(ValueError, match="source"):
+            build_render_plan(_timeline(track))
+
+    def test_audio_defaults_to_empty(self) -> None:
+        plan = build_render_plan(Timeline(tracks=[]))
+        assert plan.audio == []
+
+    def test_reframes_sorted_by_start(self) -> None:
+        track = Track(
+            name="reframe",
+            kind="reframe",
+            items=[
+                TimelineItem(id="reframe-2", start=2.0, end=4.0, payload={"shot": "s2"}),
+                TimelineItem(id="reframe-1", start=0.0, end=2.0, payload={"shot": "s1"}),
+            ],
+        )
+        plan = build_render_plan(_timeline(track))
+        assert [r.shot for r in plan.reframes] == ["s1", "s2"]
+
+
+class TestBuildKaraokeClips:
+    """`_build_karaoke_clips`'s timing math -- still requires MoviePy importable
+    (like every other renderer internal past `build_render_plan`), but no real
+    media/render; see `tests/test_render_smoke.py` for the real-render exercise.
+    """
+
+    def test_one_clip_per_word_each_spanning_an_even_slice(self) -> None:
+        overlay = TextOverlay(content="one two three four", style="karaoke", anchor="bottom", start=1.0, end=3.0)
+        clips = renderer._build_karaoke_clips(overlay, font_path=renderer.DEFAULT_FONT_PATH)
+
+        assert len(clips) == 4
+        assert [clip.start for clip in clips] == pytest.approx([1.0, 1.5, 2.0, 2.5])
+        assert all(clip.duration == pytest.approx(0.5) for clip in clips)
+
+    def test_empty_content_yields_no_clips(self) -> None:
+        overlay = TextOverlay(content="   ", style="karaoke", anchor="bottom", start=0.0, end=1.0)
+        assert renderer._build_karaoke_clips(overlay, font_path=renderer.DEFAULT_FONT_PATH) == []
+
+    def test_single_word_spans_the_whole_overlay(self) -> None:
+        overlay = TextOverlay(content="hi", style="karaoke", anchor="bottom", start=0.0, end=2.0)
+        clips = renderer._build_karaoke_clips(overlay, font_path=renderer.DEFAULT_FONT_PATH)
+        assert len(clips) == 1
+        assert clips[0].start == pytest.approx(0.0)
+        assert clips[0].duration == pytest.approx(2.0)
 
 
 class TestApplyEffectsToClipNoOp:

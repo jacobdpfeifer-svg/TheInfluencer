@@ -55,6 +55,19 @@ _TEXT_TRACK_KIND = "text"
 _EMOJI_TRACK_KIND = "emoji"
 _EFFECT_TRACK_KIND = "effect"
 _TRANSITION_TRACK_KIND = "transition"
+_REFRAME_TRACK_KIND = "reframe"
+
+# Mirrors `subsystems.reframe._DEFAULT_TARGET_ASPECT` -- the canvas every
+# video segment is normalized onto when no `reframe` op names a different
+# one (see `_resolve_target_aspect`/`_apply_reframe_to_clip`).
+_DEFAULT_TARGET_ASPECT = 9 / 16
+# The canvas's larger dimension, in pixels; the other dimension is derived
+# from `target_aspect` so e.g. 9:16 -> 1080x1920, 16:9 -> 1920x1080.
+_CANVAS_ANCHOR_PX = 1920
+# "rule_of_thirds" biases a cover-crop's vertical center to this fraction of
+# the (scaled) frame's height -- above true center (0.5), toward where a
+# subject's face/head usually sits, without per-frame subject tracking.
+_RULE_OF_THIRDS_Y_BIAS = 1 / 3
 
 # --- new-effect / transition tuning constants (see each `_EFFECT_FUNCS` entry) --
 _DEFAULT_SPEED_RAMP_FACTOR = 1.5
@@ -117,6 +130,29 @@ class TransitionInstruction(BaseModel):
     end: float = Field(gt=0)
 
 
+class ReframeInstruction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(description="'center_crop', 'rule_of_thirds', or 'fit'.")
+    target_aspect: float = Field(gt=0)
+    shot: str | None = None
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+
+
+class AudioInstruction(BaseModel):
+    """A music-bed excerpt to mix in under the video's own audio."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(description="Path to the music file this excerpt is cut from.")
+    in_: float = Field(ge=0, description="Start time (seconds) within the SOURCE file.")
+    out_: float = Field(gt=0, description="End time (seconds) within the SOURCE file.")
+    start: float = Field(ge=0, description="Start time (seconds) on the OUTPUT timeline.")
+    end: float = Field(gt=0, description="End time (seconds) on the OUTPUT timeline.")
+    volume: float = Field(ge=0, description="Gain multiplier applied to this excerpt.")
+
+
 class RenderPlan(BaseModel):
     """A fully-resolved, MoviePy-agnostic description of one composite pass."""
 
@@ -127,6 +163,8 @@ class RenderPlan(BaseModel):
     emoji_overlays: list[EmojiOverlay] = Field(default_factory=list)
     effects: list[EffectInstruction] = Field(default_factory=list)
     transitions: list[TransitionInstruction] = Field(default_factory=list)
+    reframes: list[ReframeInstruction] = Field(default_factory=list)
+    audio: list[AudioInstruction] = Field(default_factory=list)
     duration: float = Field(ge=0, description="Total output duration (seconds).")
 
 
@@ -137,6 +175,8 @@ def build_render_plan(timeline: Timeline) -> RenderPlan:
     emoji_overlays = _build_emoji_overlays(timeline)
     effects = _build_effects(timeline)
     transitions = _build_transitions(timeline)
+    reframes = _build_reframes(timeline)
+    audio = _build_audio_instructions(timeline)
 
     ends = [segment.output_end for segment in video_segments]
     ends += [overlay.end for overlay in text_overlays]
@@ -149,6 +189,8 @@ def build_render_plan(timeline: Timeline) -> RenderPlan:
         emoji_overlays=emoji_overlays,
         effects=effects,
         transitions=transitions,
+        reframes=reframes,
+        audio=audio,
         duration=duration,
     )
 
@@ -241,6 +283,49 @@ def _build_transitions(timeline: Timeline) -> list[TransitionInstruction]:
     return sorted(transitions, key=lambda transition: transition.start)
 
 
+def _build_reframes(timeline: Timeline) -> list[ReframeInstruction]:
+    reframes = []
+    for track in timeline.tracks:
+        if track.kind != _REFRAME_TRACK_KIND:
+            continue
+        for item in track.items:
+            reframes.append(
+                ReframeInstruction(
+                    kind=item.payload.get("kind", "center_crop"),
+                    target_aspect=item.payload.get("target_aspect", _DEFAULT_TARGET_ASPECT),
+                    shot=item.payload.get("shot"),
+                    start=item.start,
+                    end=item.end,
+                )
+            )
+    return sorted(reframes, key=lambda reframe: reframe.start)
+
+
+def _build_audio_instructions(timeline: Timeline) -> list[AudioInstruction]:
+    instructions = []
+    for track in timeline.tracks:
+        if track.kind != "audio":
+            continue
+        for item in track.items:
+            if "source" not in item.payload:
+                raise ValueError(
+                    f"renderer: audio item {item.id!r} has no 'source' in its payload; "
+                    "the Timeline must be seeded with source media before rendering"
+                )
+            duration = item.end - item.start
+            instructions.append(
+                AudioInstruction(
+                    source=item.payload["source"],
+                    in_=item.payload.get("in", 0.0),
+                    out_=item.payload.get("out", duration),
+                    start=item.start,
+                    end=item.end,
+                    volume=item.payload.get("volume", 1.0),
+                )
+            )
+    return sorted(instructions, key=lambda instruction: instruction.start)
+
+
 # --- the actual composite pass (MoviePy; not exercised by the test suite) --
 
 _ANCHOR_POSITIONS: dict[str, tuple[str, str]] = {
@@ -271,11 +356,15 @@ def render(
     if not plan.video_segments:
         raise ValueError("renderer: cannot render a Timeline with no video segments")
 
-    video = _build_video_track(plan)
+    canvas_w, canvas_h = _canvas_size(_resolve_target_aspect(plan))
+    video = _build_video_track(plan, canvas_w=canvas_w, canvas_h=canvas_h)
 
     overlays: list[Any] = [video]
     for overlay in plan.text_overlays:
-        overlays.append(_build_text_clip(overlay, font_path=font_path).with_start(overlay.start))
+        if overlay.style == "karaoke":
+            overlays.extend(_build_karaoke_clips(overlay, font_path=font_path))
+        else:
+            overlays.append(_build_text_clip(overlay, font_path=font_path).with_start(overlay.start))
     for emoji_overlay in plan.emoji_overlays:
         overlays.append(_build_emoji_clip(emoji_overlay).with_start(emoji_overlay.start))
     for effect in plan.effects:
@@ -284,14 +373,72 @@ def render(
 
     composite = CompositeVideoClip(overlays) if len(overlays) > 1 else video
 
+    if plan.audio:
+        composite = _mix_audio(composite, plan.audio)
+
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     composite.write_videofile(str(output), fps=fps)
     return output
 
 
-def _build_video_track(plan: RenderPlan) -> Any:
+def _mix_audio(clip: Any, audio_instructions: list[AudioInstruction]) -> Any:
+    """Mix `audio_instructions` (music-bed excerpts) UNDER `clip`'s own audio, if any.
+
+    A talking-head shot's own dialogue survives (`clip.audio` is kept as one
+    of the layers); the music bed(s) just play alongside it at their own
+    `volume`. A clip with no embedded audio at all (e.g. silent b-roll) just
+    gets the music bed as its only audio.
+    """
+    from moviepy import AudioFileClip, CompositeAudioClip
+    from moviepy.audio.fx import MultiplyVolume
+
+    music_layers = []
+    for instruction in audio_instructions:
+        excerpt = AudioFileClip(instruction.source).subclipped(instruction.in_, instruction.out_)
+        excerpt = excerpt.with_effects([MultiplyVolume(instruction.volume)]).with_start(instruction.start)
+        music_layers.append(excerpt)
+
+    layers = ([clip.audio] if clip.audio is not None else []) + music_layers
+    if not layers:
+        return clip
+    mixed = layers[0] if len(layers) == 1 else CompositeAudioClip(layers)
+    return clip.with_audio(mixed)
+
+
+def _canvas_size(target_aspect: float) -> tuple[int, int]:
+    """Output canvas (width, height) in pixels for `target_aspect` (width / height).
+
+    Anchors the LARGER dimension at `_CANVAS_ANCHOR_PX` and derives the
+    other from `target_aspect`, so every segment (regardless of its own
+    native resolution/aspect) normalizes onto one consistent frame size —
+    e.g. 9:16 -> 1080x1920, 16:9 -> 1920x1080, 1:1 -> 1920x1920.
+    """
+    if target_aspect <= 1:
+        return round(_CANVAS_ANCHOR_PX * target_aspect), _CANVAS_ANCHOR_PX
+    return _CANVAS_ANCHOR_PX, round(_CANVAS_ANCHOR_PX / target_aspect)
+
+
+def _resolve_target_aspect(plan: RenderPlan) -> float:
+    """The output canvas's aspect: the first `reframe` instruction's, if any, else the default.
+
+    A `Template` (and so `fill_template`) names exactly one `aspect_ratio`
+    for a whole edit, so in practice every `reframe` op on a given Timeline
+    agrees — this just needs *a* value when at least one exists.
+    """
+    if plan.reframes:
+        return plan.reframes[0].target_aspect
+    return _DEFAULT_TARGET_ASPECT
+
+
+def _build_video_track(plan: RenderPlan, *, canvas_w: int, canvas_h: int) -> Any:
     """Build the single (possibly transitioned) video clip from `plan.video_segments`.
+
+    Every segment is first normalized onto one `(canvas_w, canvas_h)` canvas
+    (see `_apply_reframe_to_clip`) — mixed-aspect, pooled footage (see
+    `content.extract_pool`) would otherwise leave `CompositeVideoClip`
+    sizing itself off whichever clip happens to be first and pinning the
+    rest top-left, misaligned. Effects then run on the now-canvas-sized clip.
 
     Replaces plain `concatenate_videoclips` with a manually-positioned
     `CompositeVideoClip` because a `fade` transition needs a NEGATIVE gap
@@ -306,6 +453,9 @@ def _build_video_track(plan: RenderPlan) -> Any:
     clips: list[Any] = []
     for segment in plan.video_segments:
         clip = VideoFileClip(segment.source).subclipped(segment.in_, segment.out_)
+        reframe = _find_reframe(plan.reframes, segment.shot)
+        mode = reframe.kind if reframe is not None else "center_crop"
+        clip = _apply_reframe_to_clip(clip, mode=mode, canvas_w=canvas_w, canvas_h=canvas_h)
         clip = _apply_effects_to_clip(clip, segment, plan.effects)
         clips.append(clip)
 
@@ -338,7 +488,7 @@ def _build_video_track(plan: RenderPlan) -> Any:
         starts[i] = starts[i - 1] + clips[i - 1].duration - overlap_before[i]
 
     positioned = [clip.with_start(start) for clip, start in zip(clips, starts)]
-    return CompositeVideoClip(positioned)
+    return CompositeVideoClip(positioned, size=(canvas_w, canvas_h))
 
 
 def _find_transition(
@@ -350,12 +500,77 @@ def _find_transition(
     return None
 
 
+def _find_reframe(reframes: list[ReframeInstruction], shot: str | None) -> ReframeInstruction | None:
+    return next((reframe for reframe in reframes if reframe.shot == shot and shot is not None), None)
+
+
+def _apply_reframe_to_clip(clip: Any, *, mode: str, canvas_w: int, canvas_h: int) -> Any:
+    """Normalize `clip` onto exactly `(canvas_w, canvas_h)`, per `mode` (see `subsystems/reframe.py`)."""
+    if mode == "fit":
+        return _fit_letterbox(clip, canvas_w, canvas_h)
+    y_bias = _RULE_OF_THIRDS_Y_BIAS if mode == "rule_of_thirds" else 0.5
+    return _cover_crop(clip, canvas_w, canvas_h, y_bias=y_bias)
+
+
+def _cover_crop(clip: Any, canvas_w: int, canvas_h: int, *, y_bias: float) -> Any:
+    """Scale `clip` to fully COVER `(canvas_w, canvas_h)`, then crop the excess.
+
+    `y_bias` (0=top, 0.5=center, 1=bottom) places the crop window's vertical
+    center as a fraction of the scaled frame's height, clamped so the
+    window never runs past either edge.
+    """
+    from moviepy.video.fx import Crop
+
+    scale = max(canvas_w / clip.w, canvas_h / clip.h)
+    resized = clip.resized(scale)
+
+    x_center = resized.w / 2
+    y_center = min(max(resized.h * y_bias, canvas_h / 2), resized.h - canvas_h / 2)
+    return resized.with_effects([Crop(x_center=x_center, y_center=y_center, width=canvas_w, height=canvas_h)])
+
+
+def _fit_letterbox(clip: Any, canvas_w: int, canvas_h: int) -> Any:
+    """Scale `clip` to fit ENTIRELY inside `(canvas_w, canvas_h)`, centered on a black background (no crop)."""
+    from moviepy import ColorClip, CompositeVideoClip
+
+    scale = min(canvas_w / clip.w, canvas_h / clip.h)
+    resized = clip.resized(scale).with_position("center")
+    background = ColorClip(size=(canvas_w, canvas_h), color=(0, 0, 0)).with_duration(clip.duration)
+    return CompositeVideoClip([background, resized], size=(canvas_w, canvas_h))
+
+
 def _build_text_clip(overlay: TextOverlay, *, font_path: str | Path) -> Any:
     from moviepy import TextClip
 
     position = _ANCHOR_POSITIONS.get(overlay.anchor, _ANCHOR_POSITIONS["bottom"])
     clip = TextClip(font=str(font_path), text=overlay.content, font_size=48, color="white")
     return clip.with_duration(overlay.end - overlay.start).with_position(position)
+
+
+def _build_karaoke_clips(overlay: TextOverlay, *, font_path: str | Path) -> list[Any]:
+    """Split `overlay.content` into words, each shown for an even slice of `[overlay.start, overlay.end)`.
+
+    "karaoke" (per AGENTS.md's `TextStyle`: "rapid word-by-word") means one
+    word on screen at a time, not the whole phrase held for the whole span —
+    the static-caption path (`_build_text_clip`) already covers "the whole
+    phrase, the whole span." An empty/whitespace-only `content` yields no
+    clips at all rather than dividing by zero.
+    """
+    from moviepy import TextClip
+
+    words = overlay.content.split()
+    if not words:
+        return []
+
+    position = _ANCHOR_POSITIONS.get(overlay.anchor, _ANCHOR_POSITIONS["bottom"])
+    per_word_duration = (overlay.end - overlay.start) / len(words)
+
+    clips = []
+    for index, word in enumerate(words):
+        clip = TextClip(font=str(font_path), text=word, font_size=48, color="white")
+        clip = clip.with_duration(per_word_duration).with_position(position)
+        clips.append(clip.with_start(overlay.start + index * per_word_duration))
+    return clips
 
 
 def _build_emoji_clip(overlay: EmojiOverlay) -> Any:

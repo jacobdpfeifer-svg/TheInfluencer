@@ -58,10 +58,11 @@ to override the template's plan entirely; templates never constrain it.
 4. **Text** (OCR): on-screen text position, timing vs cuts, style class (karaoke vs static title).
 
 ## Subsystems (pure functions over the Timeline)
-`cutter`, `text_adder`, `emoji_adder`, `effects`. Each is
-`(Timeline, params) -> Timeline`, writing instructions only. The **renderer** is the
-single composite pass. The **executor** walks the `EditPlan` and dispatches ops by
-name using the **tool manifest** (the map of what each subsystem accepts).
+`cutter`, `text_adder`, `emoji_adder`, `effects`, `transitions`, `reframe`,
+`music`. Each is `(Timeline, params) -> Timeline`, writing instructions only.
+The **renderer** is the single composite pass. The **executor** walks the
+`EditPlan` and dispatches ops by name using the **tool manifest** (the map of
+what each subsystem accepts).
 
 ---
 
@@ -78,7 +79,9 @@ ContentFeatures aspect, has_speech, music_bpm, shots: [Shot],
                 flags/buckets (motion: low|med|high, is_vertical, has_face...)
 EditOp          tool: str, params: dict            # tool must exist in the manifest
 EditPlan        ops: [EditOp], confidence: float
-Timeline        tracks of instructions (OTIO-backed); NOT media
+Timeline        tracks of instructions (a plain Pydantic model that mirrors
+                OpenTimelineIO's track/clip shape, not the `opentimelineio`
+                package itself — see `models/timeline.py`); NOT media
 ```
 
 `EditPlan` example:

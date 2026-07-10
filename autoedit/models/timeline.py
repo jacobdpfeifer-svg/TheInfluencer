@@ -1,16 +1,19 @@
-"""Timeline — the internal, OTIO-backed editing model.
+"""Timeline — the internal, OpenTimelineIO-*shaped* editing model.
 
 The Timeline holds INSTRUCTIONS, never media. Subsystems (`cutter`,
-`text_adder`, `emoji_adder`, `effects`) each take a Timeline and params and
-return a new/mutated Timeline. Only the renderer ever turns a Timeline into
-pixels, in a single composite pass.
+`text_adder`, `emoji_adder`, `effects`, `transitions`, `reframe`, `music`)
+each take a Timeline and params and return a new/mutated Timeline. Only the
+renderer ever turns a Timeline into pixels, in a single composite pass.
 
 This module defines the plain-JSON Pydantic contract for a Timeline. It
-mirrors the structure OTIO would use (tracks containing timed items) without
-requiring the `opentimelineio` library itself, so that every stage before the
-renderer can be tested on fixture JSON alone (see AGENTS.md testing rule). The
-renderer/executor layer is responsible for translating to/from a real
-`opentimelineio.schema.Timeline` when it actually composites.
+mirrors the structure OTIO would use (tracks containing timed items)
+WITHOUT requiring the `opentimelineio` library itself (not a dependency of
+this project at all), so that every stage before the renderer can be tested
+on fixture JSON alone (see AGENTS.md testing rule). There is no OTIO
+round-trip anywhere in this pipeline: `renderer.build_render_plan` reads
+this Pydantic model directly and `renderer.render` drives MoviePy straight
+off the result — OTIO is a design-shape reference only, not a runtime
+dependency.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-TrackKind = Literal["video", "audio", "text", "emoji", "effect", "transition"]
+TrackKind = Literal["video", "audio", "text", "emoji", "effect", "transition", "reframe"]
 
 
 class TimelineItem(BaseModel):
@@ -42,7 +45,7 @@ class TimelineItem(BaseModel):
 
 
 class Track(BaseModel):
-    """A single track (one of video/audio/text/emoji/effect) of timed items."""
+    """A single track (one `TrackKind` — video/audio/text/emoji/effect/transition/reframe) of timed items."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -60,6 +63,7 @@ class Timeline(BaseModel):
     beat_times: list[float] = Field(
         default_factory=list,
         description="Detected audio beat timestamps (seconds), carried through from "
-        "ContentFeatures so tools (e.g. `cutter`'s beat-sync) can read them off the "
-        "Timeline itself rather than needing them re-threaded through every op's params.",
+        "ContentFeatures. `cutter`'s beat-sync (`sync='beat'`) reads this as a "
+        "FALLBACK when a plan's own `CutterParams.beat_times` is empty, so a beat "
+        "grid set once here still works even for an op that never mentions it.",
     )

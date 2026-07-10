@@ -127,6 +127,52 @@ class TestCheckPlanCutPacing:
         assert not any("implied average shot length" in warning for warning in result.warnings)
 
 
+class TestCheckPlanDurationBudget:
+    def test_flags_a_near_empty_plan_as_too_short(self) -> None:
+        style = _style()
+        plan = _plan(_cutter(["s1"]))  # 1 shot * 2s fallback estimate = 2s, below the 3s floor
+
+        result = check_plan(plan, style)
+
+        assert result.passed is False
+        assert any("total duration" in warning for warning in result.warnings)
+
+    def test_flags_a_runaway_plan_as_too_long(self) -> None:
+        style = _style()
+        plan = _plan(_cutter([f"s{i}" for i in range(1, 60)]))  # 59 shots * 2s = 118s, over the 90s ceiling
+
+        result = check_plan(plan, style)
+
+        assert result.passed is False
+        assert any("total duration" in warning for warning in result.warnings)
+
+    def test_does_not_flag_a_plan_within_the_short_form_budget(self) -> None:
+        style = _style()
+        plan = _plan(_cutter(["s1", "s2", "s3"]))  # 3 * 2s = 6s
+
+        result = check_plan(plan, style)
+
+        assert not any("total duration" in warning for warning in result.warnings)
+
+    def test_flags_and_notes_estimation_when_features_are_not_supplied(self) -> None:
+        style = _style()
+        plan = _plan(_cutter(["s1"]))
+
+        result = check_plan(plan, style)
+
+        assert any("estimated durations" in warning for warning in result.warnings)
+
+    def test_uses_real_durations_when_features_are_supplied(self, features) -> None:
+        # features fixture totals 5.0s for s1+s2 -- comfortably within budget, no estimation note.
+        style = _style()
+        plan = _plan(_cutter(["s1", "s2"]))
+
+        result = check_plan(plan, style, features=features)
+
+        assert not any("total duration" in warning for warning in result.warnings)
+        assert result.metrics["duration_is_estimated"] is False
+
+
 class TestCheckPlanMetricsAndEdgeCases:
     def test_metrics_include_cut_count_and_shot_count(self) -> None:
         result = check_plan(_plan(_cutter(["s1", "s2", "s3"])), _style())

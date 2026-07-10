@@ -20,10 +20,10 @@ has two layers, both deterministic:
 `_simple_heuristic_plan` is intentionally simple — "AI raises the ceiling;
 rules are the floor." It keeps every shot (retiming/beat-syncing per the
 learned style), and only adds text/effect/emoji ops when the StyleProfile's
-own signals justify them, skipping anything it has no real basis to
-fabricate (e.g. it never invents caption copy — a static placeholder stands
-in for real text generation, which is an LLM-only concern per
-`.cursor/rules/director.mdc`).
+own signals justify them. Caption copy comes from
+`templates.captions.generate_caption_copy` (deterministic, footage-derived —
+not a full text-generation model); a real LLM director is free to write
+better, situational copy per `.cursor/rules/director.mdc`.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from __future__ import annotations
 from autoedit.models.content_features import ContentFeatures
 from autoedit.models.plan import EditOp, EditPlan
 from autoedit.models.style_profile import StyleProfile
+from autoedit.templates.captions import generate_caption_copy
 from autoedit.templates.filler import fill_template
 from autoedit.templates.matcher import match_template, score_template
 
@@ -43,7 +44,6 @@ _TEMPLATE_MATCH_MIN_SCORE = 0.3
 # documented "baseline" confidence rather than a measured quantity.
 HEURISTIC_CONFIDENCE = 0.5
 
-_DEFAULT_CAPTION_TEXT = "New content \U0001f4a5"
 _DEFAULT_CAPTION_DURATION_SEC = 2.0
 _DEFAULT_EMOJI_GLYPH = "\u2728"
 # Above this, the style profile leans heavily enough on effects that a fade
@@ -100,9 +100,10 @@ def _text_op(style: StyleProfile, features: ContentFeatures) -> EditOp | None:
     caption_style = "karaoke" if style.caption_style_freq.karaoke >= style.caption_style_freq.static else "static"
     first_shot_dur = features.shots[0].dur
     duration = min(_DEFAULT_CAPTION_DURATION_SEC, first_shot_dur)
+    content = generate_caption_copy(features, "TITLE")
     return EditOp(
         tool="text",
-        params={"content": _DEFAULT_CAPTION_TEXT, "style": caption_style, "anchor": "bottom", "start": 0.0, "duration": duration},
+        params={"content": content, "style": caption_style, "anchor": "bottom", "start": 0.0, "duration": duration},
     )
 
 

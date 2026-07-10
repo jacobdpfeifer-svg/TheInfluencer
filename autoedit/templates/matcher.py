@@ -44,12 +44,7 @@ def score_template(template: Template, features: ContentFeatures, style: StylePr
 
 
 def _aspect_mismatch(template: Template, features: ContentFeatures) -> float:
-    return abs(_parse_aspect_ratio(template.aspect_ratio) - features.aspect)
-
-
-def _parse_aspect_ratio(aspect_ratio: str) -> float:
-    width_str, _, height_str = aspect_ratio.partition(":")
-    return float(width_str) / float(height_str)
+    return abs(template.target_aspect - features.aspect)
 
 
 def _slot_count_mismatch(template: Template, features: ContentFeatures) -> float:

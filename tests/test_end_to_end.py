@@ -53,6 +53,25 @@ class TestMakeEndToEnd:
         rendered = ingest.probe(output)
         assert rendered.duration > 0
 
+    def test_make_pours_a_pool_of_clips_into_one_rendered_mp4(
+        self, tmp_path, multi_shot_clip_path, face_scene_clip_path, static_caption_clip_path
+    ) -> None:
+        """Multi-clip `make`: several raw clips -> `content.extract_pool` -> one edit.
+
+        Proves the whole pooled path runs start to finish with zero AI and
+        produces a real, playable mp4 (the renderer already loads each
+        segment from its own `source`, so multi-source timelines just work)."""
+        output = tmp_path / "out.mp4"
+
+        result_path = cli.make(
+            [multi_shot_clip_path, face_scene_clip_path, static_caption_clip_path], output
+        )
+
+        assert result_path == output
+        assert output.exists() and output.stat().st_size > 0
+        rendered = ingest.probe(output)
+        assert rendered.duration > 0
+
     def test_make_with_a_learned_style_profile_still_renders(self, tmp_path, multi_shot_clip_path, face_scene_clip_path) -> None:
         style_path = tmp_path / "style.json"
         cli.learn([multi_shot_clip_path, face_scene_clip_path], style_path)
@@ -62,6 +81,41 @@ class TestMakeEndToEnd:
 
         assert result_path == output
         assert output.exists() and output.stat().st_size > 0
+
+    def test_make_with_a_music_path_overrides_beat_times_and_bpm_before_directing(
+        self, tmp_path, multi_shot_clip_path, click_track_path, monkeypatch
+    ) -> None:
+        """`music_path`'s REAL beat grid (from `click_track_path`, ~117 BPM) must reach the
+        director/template instead of whatever the (silent) `multi_shot_clip_path` fixture measured.
+        """
+        seen_features = {}
+
+        import autoedit.cli as cli_module
+
+        real_direct = cli_module.direct
+
+        def spying_direct(features, style, **kwargs):
+            seen_features["features"] = features
+            return real_direct(features, style, **kwargs)
+
+        monkeypatch.setattr(cli_module, "direct", spying_direct)
+
+        output = tmp_path / "out.mp4"
+        cli.make(multi_shot_clip_path, output, music_path=click_track_path)
+
+        features = seen_features["features"]
+        assert features.beat_times  # non-empty, real beats from the music file
+        assert features.music_bpm is not None and features.music_bpm > 0
+        assert output.exists() and output.stat().st_size > 0
+
+    def test_make_with_a_music_path_mixes_a_real_audio_track_into_the_output(
+        self, tmp_path, multi_shot_clip_path, click_track_path
+    ) -> None:
+        output = tmp_path / "out.mp4"
+        cli.make(multi_shot_clip_path, output, music_path=click_track_path)
+
+        probe = ingest.probe(output)
+        assert probe.audio_channels is not None and probe.audio_channels > 0
 
     def test_make_output_matches_the_heuristic_plan_for_a_fully_neutral_style(
         self, tmp_path, multi_shot_clip_path
@@ -126,6 +180,13 @@ class TestCliMain:
         assert exit_code == 0
         assert output.exists()
 
+    def test_make_command_respects_music_flag(self, tmp_path, multi_shot_clip_path, click_track_path) -> None:
+        output = tmp_path / "out.mp4"
+        exit_code = cli.main(["make", str(multi_shot_clip_path), "-o", str(output), "--music", str(click_track_path)])
+        assert exit_code == 0
+        assert output.exists()
+        assert ingest.probe(output).audio_channels > 0
+
     def test_make_command_with_gallery_flag_writes_a_gallery_html(self, tmp_path, multi_shot_clip_path) -> None:
         output = tmp_path / "out.mp4"
         gallery_dir = tmp_path / "gallery"
@@ -165,3 +226,56 @@ class TestCliMain:
         stderr = capsys.readouterr().err
         assert "[review]" in stderr
         assert "caption density" in stderr
+
+    def test_make_dry_run_writes_plan_and_review_json_without_rendering(
+        self, tmp_path, multi_shot_clip_path, capsys
+    ) -> None:
+        output = tmp_path / "dry_run.json"
+        exit_code = cli.main(["make", str(multi_shot_clip_path), "-o", str(output), "--dry-run"])
+
+        assert exit_code == 0
+        assert output.exists()
+        data = json.loads(output.read_text())
+        assert "plan" in data and "ops" in data["plan"] and "confidence" in data["plan"]
+        assert "review" in data and "passed" in data["review"]
+        captured = capsys.readouterr()
+        assert "Directed (dry-run)" in captured.out
+
+    def test_make_dry_run_skips_the_gallery_and_warns_on_stderr(
+        self, tmp_path, multi_shot_clip_path, capsys
+    ) -> None:
+        output = tmp_path / "dry_run.json"
+        gallery_dir = tmp_path / "gallery"
+
+        exit_code = cli.main(["make", str(multi_shot_clip_path), "-o", str(output), "--dry-run", "-g", str(gallery_dir)])
+
+        assert exit_code == 0
+        assert not gallery_dir.exists()
+        assert "skipping the gallery entry" in capsys.readouterr().err
+
+    def test_eval_command_reports_the_zero_ai_stub_as_entirely_invalid(self, capsys) -> None:
+        exit_code = cli.main(["eval"])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "0/3 valid (0%)" in captured.out
+        assert "FAIL" in captured.out
+
+    def test_eval_command_respects_cases_dir_flag(self, tmp_path, content_features_data, capsys) -> None:
+        case_path = tmp_path / "one_case.json"
+        case_path.write_text(
+            json.dumps(
+                {
+                    "name": "solo_case",
+                    "features": content_features_data,
+                    "style": cli.DEFAULT_STYLE_PROFILE.model_dump(),
+                }
+            )
+        )
+
+        exit_code = cli.main(["eval", "--cases-dir", str(tmp_path)])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "0/1 valid (0%)" in captured.out
+        assert "solo_case" in captured.out

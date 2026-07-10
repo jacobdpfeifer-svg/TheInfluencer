@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from autoedit.models.shot import Shot
 
 MotionBucket = Literal["low", "med", "high"]
+TextStyleBucket = Literal["karaoke", "static", "none"]
 
 
 class ContentFeatures(BaseModel):
@@ -32,4 +33,8 @@ class ContentFeatures(BaseModel):
     has_face: bool = Field(description="Whether any face was detected across the footage.")
     beat_times: list[float] = Field(
         default_factory=list, description="Detected audio beat timestamps (seconds), from the audio extractor."
+    )
+    has_text: bool = Field(default=False, description="Whether any on-screen text was detected in the footage.")
+    text_style: TextStyleBucket = Field(
+        default="none", description="Dominant on-screen text style class across shots with text, or 'none'."
     )

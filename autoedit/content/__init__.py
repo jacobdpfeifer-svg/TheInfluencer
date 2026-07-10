@@ -1,7 +1,8 @@
-"""Phase B — extracting one raw footage asset into `ContentFeatures`."""
+"""Phase B — extracting one raw footage asset (or a pool of them) into `ContentFeatures`."""
 
-from autoedit.content.extract import extract
+from autoedit.content.extract import extract, extract_pool
 
 __all__ = [
     "extract",
+    "extract_pool",
 ]

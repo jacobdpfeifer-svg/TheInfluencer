@@ -77,10 +77,7 @@ def aggregate(videos: list[VideoFeatures]) -> StyleProfile:
         caption_style_freq=_caption_style_freq(videos),
         caption_density=statistics.fmean(_video_caption_density(video) for video in videos),
         text_amount=statistics.fmean(_video_text_amount(video) for video in videos),
-        # No extractor measures applied effects (zoom/pan/etc.) yet — only
-        # pacing/framing/audio/text exist per AGENTS.md's build order — so
-        # this is a documented placeholder, not a real measurement.
-        effect_freq=0.0,
+        effect_freq=statistics.fmean(_video_effect_freq(video) for video in videos),
         sample_count=len(videos),
     )
 
@@ -135,3 +132,23 @@ def _video_text_amount(video: VideoFeatures) -> float:
         return 0.0
     covered = sum(event.end - event.start for shot in video.text.shots for event in shot.events)
     return covered / video.pacing.duration
+
+
+def _video_effect_freq(video: VideoFeatures) -> float:
+    """Moving-camera shots per second — a PROXY for `effect_freq` (0.0 if no duration).
+
+    No dedicated effects extractor exists yet (only pacing/framing/audio/text
+    per AGENTS.md's build order), so there's no direct measurement of
+    applied pan/zoom/shake in reference footage. `framing.camera` already
+    flags each shot "moving" vs "static" (see `extractors/framing.py`), and a
+    moving read is a reasonable stand-in: hand-held motion, zooms, and pans
+    are the dominant real-world cause of a shot reading as "moving" in a
+    short reference clip, and are exactly the effects `subsystems/effects.py`
+    can apply (`zoom_in`, `shake`, `ken_burns`, ...). This intentionally
+    over-counts genuinely moving SUBJECTS (not camera effects) as a
+    trade-off for having any signal at all.
+    """
+    if video.pacing.duration <= 0:
+        return 0.0
+    moving_shots = sum(1 for shot in video.framing.shots if shot.camera == "moving")
+    return moving_shots / video.pacing.duration

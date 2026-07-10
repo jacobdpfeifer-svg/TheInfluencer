@@ -74,3 +74,16 @@ class Template(BaseModel):
     music: TemplateMusic = Field(description="This template's music requirements.")
     slots: list[TemplateSlot] = Field(min_length=1, description="Ordered video slots to fill with footage.")
     text_slots: list[TextSlot] = Field(default_factory=list, description="Caption/title overlays for the edit.")
+
+    @property
+    def target_aspect(self) -> float:
+        """`aspect_ratio` ("W:H") as a float, e.g. "9:16" -> 0.5625.
+
+        The single shared parse of `aspect_ratio` — `templates.matcher`
+        (footage-fit scoring) and `templates.filler` (emitting `reframe` ops
+        so the renderer normalizes every shot onto this canvas) both need
+        the same float, so it lives here once rather than being
+        re-implemented per caller.
+        """
+        width_str, _, height_str = self.aspect_ratio.partition(":")
+        return float(width_str) / float(height_str)

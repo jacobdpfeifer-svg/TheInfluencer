@@ -44,6 +44,8 @@ def _brief_features(features: ContentFeatures) -> dict[str, Any]:
         "has_face": features.has_face,
         "motion": features.motion,
         "music_bpm": features.music_bpm,
+        "has_text": features.has_text,
+        "text_style": features.text_style,
         "shots": [_brief_shot(shot) for shot in features.shots],
     }
 

@@ -13,6 +13,7 @@ import pytest
 from autoedit.director.validate import validate_plan
 from autoedit.models.content_features import ContentFeatures
 from autoedit.models.plan import EditPlan
+from autoedit.models.shot import Shot
 from autoedit.models.style_profile import StyleProfile
 from autoedit.models.template import Template
 from autoedit.templates import TEMPLATE_REGISTRY
@@ -33,10 +34,12 @@ _NEUTRAL_STYLE = StyleProfile.model_validate(
 )
 
 
-def _shot(shot_id: str, *, motion: float = 0.1, faces: int = 0, scale: str = "wide", dur: float = 2.0) -> dict:
+def _shot(
+    shot_id: str, *, motion: float = 0.1, faces: int = 0, scale: str = "wide", dur: float = 2.0, source_override: str = "raw.mp4"
+) -> dict:
     return {
         "id": shot_id,
-        "source": "raw.mp4",
+        "source": source_override,
         "in": 0.0,
         "out": dur,
         "dur": dur,
@@ -113,6 +116,15 @@ class TestFillTemplateBasics:
         assert cutter_op.params["sync"] == "beat"
         assert cutter_op.params["beat_times"] == [0.5, 1.0]
 
+    def test_no_trim_when_every_assigned_shot_is_within_its_slots_budget(self) -> None:
+        template = TEMPLATE_REGISTRY["talking_head_with_broll"]  # min/max_duration 5.0/15.0
+        features = _features(has_speech=True, has_face=True, shots=[_shot("s1", faces=1, scale="close", dur=8.0)])
+
+        plan = fill_template(template, features, _NEUTRAL_STYLE)
+
+        cutter_op = next(op for op in plan.ops if op.tool == "cutter")
+        assert cutter_op.params.get("trim", {}) == {}
+
     def test_effect_ops_match_the_templates_slot_effects(self) -> None:
         template = TEMPLATE_REGISTRY["punchy_beat_montage"]  # hook=zoom_in, payoff=zoom_out
         features = _features(
@@ -147,7 +159,9 @@ class TestFillTemplateBasics:
         assert transition_ops[0].params["kind"] == "whip_pan"
         assert len(transition_ops[0].params["between"]) == 2
 
-    def test_text_ops_use_template_text_slot_placeholders(self) -> None:
+    def test_text_ops_resolve_placeholder_tags_into_footage_derived_copy(self) -> None:
+        from autoedit.templates.captions import generate_caption_copy
+
         template = TEMPLATE_REGISTRY["talking_head_with_broll"]  # TITLE (top, static), CTA (bottom, static)
         features = _features(
             has_speech=True, has_face=True,
@@ -157,7 +171,9 @@ class TestFillTemplateBasics:
         plan = fill_template(template, features, _NEUTRAL_STYLE)
 
         text_ops = [op for op in plan.ops if op.tool == "text"]
-        assert {op.params["content"] for op in text_ops} == {"TITLE", "CTA"}
+        expected = {generate_caption_copy(features, "TITLE"), generate_caption_copy(features, "CTA")}
+        assert {op.params["content"] for op in text_ops} == expected
+        assert expected != {"TITLE", "CTA"}  # sanity: the tags really did get resolved, not passed through
         assert all(op.params["style"] == "static" for op in text_ops)
 
     def test_no_text_ops_when_the_template_has_no_text_slots(self) -> None:
@@ -167,6 +183,96 @@ class TestFillTemplateBasics:
         plan = fill_template(template, features, _NEUTRAL_STYLE)
 
         assert not any(op.tool == "text" for op in plan.ops)
+
+    def test_reframe_ops_emitted_for_slots_with_a_transform(self) -> None:
+        template = TEMPLATE_REGISTRY["talking_head_with_broll"]  # talking_head slots -> center_crop
+        features = _features(
+            has_speech=True, has_face=True,
+            shots=[_shot("s1", faces=1, scale="close", dur=8.0), _shot("s2", faces=1, scale="close", dur=6.0)],
+        )
+
+        plan = fill_template(template, features, _NEUTRAL_STYLE)
+
+        reframe_ops = [op for op in plan.ops if op.tool == "reframe"]
+        assert len(reframe_ops) == 2  # both talking_head slots have transform="center_crop"
+        assert all(op.params["kind"] == "center_crop" for op in reframe_ops)
+        assert all(op.params["target_aspect"] == pytest.approx(template.target_aspect) for op in reframe_ops)
+
+    def test_no_reframe_op_for_slots_with_transform_none(self) -> None:
+        template = TEMPLATE_REGISTRY["punchy_beat_montage"]  # every slot has transform="none"
+        features = _features(
+            music_bpm=128.0,
+            shots=[_shot(f"s{i}", motion=0.7, dur=1.0) for i in range(1, 6)],
+        )
+
+        plan = fill_template(template, features, _NEUTRAL_STYLE)
+
+        assert not any(op.tool == "reframe" for op in plan.ops)
+
+    def test_reframe_op_params_validate_against_reframeparams(self) -> None:
+        from autoedit.subsystems.reframe import ReframeParams
+
+        template = TEMPLATE_REGISTRY["talking_head_with_broll"]
+        features = _features(
+            has_speech=True, has_face=True, shots=[_shot("s1", faces=1, scale="close", dur=8.0)]
+        )
+
+        plan = fill_template(template, features, _NEUTRAL_STYLE)
+
+        reframe_op = next(op for op in plan.ops if op.tool == "reframe")
+        ReframeParams.model_validate(reframe_op.params)  # must not raise
+
+
+class TestDurationBudgeting:
+    """`TemplateSlot.duration`/`max_duration` become `cutter` `trim` caps;
+    `min_duration` is a soft `_slot_shot_score` penalty (see filler.py's
+    module docstring for why the two need different treatment).
+    """
+
+    def test_slot_duration_cap_is_none_when_shot_is_within_max_duration(self) -> None:
+        from autoedit.templates.filler import _slot_duration_cap
+
+        slot = next(s for s in TEMPLATE_REGISTRY["punchy_beat_montage"].slots if s.id == "hook")  # max_duration 3.0
+        shot = Shot.model_validate(_shot("s1", dur=2.0))
+        assert _slot_duration_cap(slot, shot) is None
+
+    def test_slot_duration_cap_is_max_duration_when_shot_exceeds_it(self) -> None:
+        from autoedit.templates.filler import _slot_duration_cap
+
+        slot = next(s for s in TEMPLATE_REGISTRY["punchy_beat_montage"].slots if s.id == "hook")  # max_duration 3.0
+        shot = Shot.model_validate(_shot("s1", dur=8.0))
+        assert _slot_duration_cap(slot, shot) == pytest.approx(3.0)
+
+    def test_slot_duration_cap_prefers_an_exact_duration_target_over_max_duration(self) -> None:
+        from autoedit.templates.filler import _slot_duration_cap
+
+        slot = TEMPLATE_REGISTRY["punchy_beat_montage"].slots[0].model_copy(update={"duration": 1.5, "max_duration": 3.0})
+        shot = Shot.model_validate(_shot("s1", dur=8.0))
+        assert _slot_duration_cap(slot, shot) == pytest.approx(1.5)
+
+    def test_cutter_trim_is_emitted_end_to_end_for_a_shot_that_blows_the_hook_budget(self) -> None:
+        template = TEMPLATE_REGISTRY["punchy_beat_montage"]  # hook: max_duration 3.0
+        features = _features(
+            music_bpm=128.0,
+            shots=[_shot("s1", motion=0.9, faces=1, dur=8.0)] + [_shot(f"s{i}", motion=0.2, dur=1.0) for i in range(2, 6)],
+        )
+
+        plan = fill_template(template, features, _NEUTRAL_STYLE)
+
+        cutter_op = next(op for op in plan.ops if op.tool == "cutter")
+        # s1 (highest motion + a face) wins the "hook" slot and gets capped to its 3.0s budget.
+        assert cutter_op.params["keep"][0] == "s1"
+        assert cutter_op.params["trim"] == {"s1": pytest.approx(3.0)}
+
+    def test_short_shot_score_is_penalized_but_never_drops_to_the_dummy_floor(self) -> None:
+        from autoedit.templates.filler import _BASE_SCORE, _slot_shot_score
+
+        slot = next(s for s in TEMPLATE_REGISTRY["talking_head_with_broll"].slots if s.id == "talking_head_1")
+        short_shot = Shot.model_validate(_shot("s1", faces=1, scale="close", dur=1.0))  # min_duration is 5.0
+        long_shot = Shot.model_validate(_shot("s2", faces=1, scale="close", dur=8.0))
+
+        assert _slot_shot_score(slot, short_shot) < _slot_shot_score(slot, long_shot)
+        assert _slot_shot_score(slot, short_shot) >= _BASE_SCORE  # never at/below the dummy-slot floor
 
 
 class TestHungarianAssignmentNeverDuplicatesAShot:
@@ -196,3 +302,43 @@ class TestHungarianAssignmentNeverDuplicatesAShot:
         assigned_shot_ids = [shot.id for _slot, shot in pairs]
         assert len(assigned_shot_ids) == len(set(assigned_shot_ids))
         assert len(pairs) == 3  # min(8 slots, 3 shots) -- the rest are dropped, not duplicated
+
+
+class TestFillTemplateAcrossMultipleSources:
+    """Filler is source-agnostic: pooled footage (shots from several clips, per
+    `content.extract_pool`) is assigned to slots exactly like single-source
+    shots, and each kept shot's own `source` rides through untouched.
+    """
+
+    def _multi_source_features(self) -> ContentFeatures:
+        # 5 shots drawn from 3 different source clips (a montage pool).
+        shots = [
+            _shot("s1", source_override="clip_a.mp4", motion=0.8, dur=1.0),
+            _shot("s2", source_override="clip_a.mp4", motion=0.3, dur=1.0),
+            _shot("s3", source_override="clip_b.mp4", motion=0.6, dur=1.0),
+            _shot("s4", source_override="clip_c.mp4", motion=0.7, dur=1.0),
+            _shot("s5", source_override="clip_c.mp4", motion=0.9, dur=1.0),
+        ]
+        return _features(music_bpm=128.0, motion="high", shots=shots)
+
+    def test_keeps_shots_from_multiple_sources_without_collapsing_them(self) -> None:
+        template = TEMPLATE_REGISTRY["punchy_beat_montage"]  # 5 slots
+        features = self._multi_source_features()
+
+        plan = fill_template(template, features, _NEUTRAL_STYLE)
+
+        cutter_op = next(op for op in plan.ops if op.tool == "cutter")
+        keep = cutter_op.params["keep"]
+        assert len(keep) == 5
+        assert len(set(keep)) == 5  # no shot assigned twice, even across sources
+
+    def test_kept_ids_are_a_subset_of_the_pooled_shot_ids(self) -> None:
+        template = TEMPLATE_REGISTRY["talking_head_with_broll"]  # 3 slots, 5 shots -> drop 2
+        features = self._multi_source_features()
+
+        plan = fill_template(template, features, _NEUTRAL_STYLE)
+
+        cutter_op = next(op for op in plan.ops if op.tool == "cutter")
+        pooled_ids = {shot.id for shot in features.shots}
+        assert set(cutter_op.params["keep"]) <= pooled_ids
+        assert len(cutter_op.params["keep"]) == 3
