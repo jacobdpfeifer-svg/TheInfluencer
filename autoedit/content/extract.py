@@ -30,6 +30,7 @@ are already burned in and, roughly, what style they are.
 
 from __future__ import annotations
 
+import warnings
 from collections import Counter
 from pathlib import Path
 
@@ -118,6 +119,14 @@ def extract_pool(paths: list[str | Path]) -> ContentFeatures:
     shots = _merge_and_reindex_shots(per_clip)
     dominant = _dominant_clip(per_clip)
     text_style = _pool_text_style(per_clip)
+
+    if any(clip.music_bpm is not None for clip in per_clip):
+        warnings.warn(
+            "Pool has music but no beat grid — pass --music to set a beat grid"
+            " from a dedicated music file.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     return ContentFeatures(
         aspect=dominant.aspect,

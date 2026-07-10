@@ -23,6 +23,7 @@ from autoedit.models.content_features import ContentFeatures
 from autoedit.models.plan import EditPlan
 from autoedit.models.style_profile import StyleProfile
 from autoedit.subsystems import TOOL_MANIFEST
+from autoedit.templates.matcher import match_template
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,8 @@ def direct(
     manifest: dict[str, Any] = TOOL_MANIFEST,
 ) -> EditPlan:
     """Turn `features` + `style` into a validated `EditPlan`, via `llm` or the heuristic fallback."""
-    brief = build_brief(features, style, manifest)
+    matched = match_template(features, style)
+    brief = build_brief(features, style, manifest, template_name=matched.name)
 
     try:
         raw_response = llm(brief)

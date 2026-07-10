@@ -117,6 +117,35 @@ class TestMakeEndToEnd:
         probe = ingest.probe(output)
         assert probe.audio_channels is not None and probe.audio_channels > 0
 
+    def test_make_with_music_flag_wires_beat_times_through_to_the_plan(
+        self, tmp_path, multi_shot_clip_path, click_track_path
+    ) -> None:
+        """--music overrides beat_times + music_bpm on features before directing.
+
+        Uses dry_run=True (no render) with the default style. The multi-shot
+        fixture matches `punchy_beat_montage` (which prefers music and uses
+        beat sync), so when the music file's real beat grid arrives on
+        `features.beat_times`, the cutter op in the output plan carries
+        `sync='beat'` and a non-empty `beat_times` list.
+        """
+        output = tmp_path / "plan.json"
+        result = cli.make(multi_shot_clip_path, output, music_path=click_track_path, dry_run=True)
+
+        assert result == output
+        assert output.exists() and output.stat().st_size > 0
+
+        data = json.loads(output.read_text())
+        cutter_ops = [op for op in data["plan"]["ops"] if op["tool"] == "cutter"]
+        assert cutter_ops, "expected at least one cutter op in the dry-run plan"
+        params = cutter_ops[0]["params"]
+        assert params.get("sync") == "beat", (
+            "cutter should use sync='beat' when music_path is given and the matched "
+            "template prefers beat-synced cuts"
+        )
+        assert params.get("beat_times"), (
+            "cutter params should carry non-empty beat_times from the music file"
+        )
+
     def test_make_output_matches_the_heuristic_plan_for_a_fully_neutral_style(
         self, tmp_path, multi_shot_clip_path
     ) -> None:

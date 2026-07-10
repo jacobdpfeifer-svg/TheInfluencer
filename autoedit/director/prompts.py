@@ -24,6 +24,15 @@ Apply this short-form editing expertise when building the plan:
 - Keep the total output duration between 15 and 60 seconds -- short-form performs worse well outside that window.
 - Less is more: cut weak, redundant, or low-motion shots rather than including everything. A tight 20-second edit beats a padded 45-second one.
 
+Tools available — only use tool names that appear in the brief's "tools" array:
+- cutter: select, reorder, and retime shots. params: keep (list of shot ids in output order), sync ("beat"|"none"), beat_times (list of beat timestamps in seconds), trim ({shot_id: max_duration_sec}).
+- text: add a caption overlay. params: content (string), style ("karaoke"|"static"), anchor ("top"|"middle"|"bottom"), start (seconds), duration (seconds).
+- emoji: add an emoji character overlay. params: glyph (a single emoji), at (seconds), duration (seconds).
+- effect: apply a per-shot visual effect. params: kind ("zoom_in"|"zoom_out"|"speed_ramp"|"shake"|"ken_burns"|"blur_intro"|"flash"), shot (shot id), factor (speed multiplier, speed_ramp only).
+- transition: add a shot-to-shot transition at one cut point. params: kind ("whip_pan"|"fade"), between ([outgoing_shot_id, incoming_shot_id]), duration (seconds).
+- reframe: set a shot's framing and crop mode. params: kind ("center_crop"|"rule_of_thirds"|"fit"), shot (shot id), target_aspect (width/height float, e.g. 0.5625 for 9:16).
+- music: DO NOT EMIT this tool. The CLI injects the music bed before directing runs; any music op in your plan will be silently ignored. Music beat grid is already reflected in the brief's beat_times.
+
 Always respond with ONLY a single JSON object shaped exactly like the EditPlan schema: {"ops": [{"tool": "<tool name>", "params": {...}}, ...], "confidence": <0-1>}. Every op's "tool" must be one of the tool names listed in the brief's "tools" array, and "params" must match that tool's own schema. Never include prose, markdown, or commentary outside the JSON object."""
 
 
@@ -63,11 +72,14 @@ FEW_SHOT_EXAMPLES: list[dict[str, Any]] = [
                 "effect_freq": 0.5,
                 "sample_count": 20,
             },
-            "tools": ["cutter", "effect", "emoji", "text"],
+            "tools": ["cutter", "effect", "emoji", "music", "reframe", "text", "transition"],
+            "template": "punchy_beat_montage",
         },
         "ideal_plan": {
             "ops": [
                 {"tool": "cutter", "params": {"keep": ["s1", "s2", "s3"], "sync": "beat", "beat_times": [0.6, 1.4, 1.9]}},
+                {"tool": "reframe", "params": {"kind": "center_crop", "shot": "s1", "target_aspect": 0.5625}},
+                {"tool": "transition", "params": {"kind": "whip_pan", "between": ["s1", "s2"], "duration": 0.3}},
                 {"tool": "effect", "params": {"kind": "zoom_in", "shot": "s1"}},
                 {"tool": "emoji", "params": {"glyph": "\U0001f525", "at": 0.3}},
             ],
@@ -76,9 +88,10 @@ FEW_SHOT_EXAMPLES: list[dict[str, Any]] = [
         "reasoning": (
             "Music is present and the style strongly prefers beat-synced cuts, so every "
             "shot is kept but retimed onto the beat. s1 opens on a close, high-motion, "
-            "face-forward shot for an immediate hook, gets a zoom_in effect for extra "
-            "punch, and an emoji lands within the first second as an early pattern "
-            "interrupt."
+            "face-forward shot for an immediate hook. A center_crop reframe keeps s1 "
+            "tightly framed on the subject. A whip_pan transition between s1 and s2 "
+            "adds kinetic energy at the first cut. zoom_in on s1 gives extra punch, "
+            "and an emoji lands within the first second as an early pattern interrupt."
         ),
     },
     {
@@ -108,11 +121,13 @@ FEW_SHOT_EXAMPLES: list[dict[str, Any]] = [
                 "effect_freq": 0.05,
                 "sample_count": 15,
             },
-            "tools": ["cutter", "effect", "emoji", "text"],
+            "tools": ["cutter", "effect", "emoji", "music", "reframe", "text", "transition"],
+            "template": "talking_head_with_broll",
         },
         "ideal_plan": {
             "ops": [
                 {"tool": "cutter", "params": {"keep": ["s1", "s2"], "sync": "none"}},
+                {"tool": "reframe", "params": {"kind": "rule_of_thirds", "shot": "s1", "target_aspect": 0.5625}},
                 {"tool": "text", "params": {"content": "wait for it...", "style": "static", "anchor": "bottom", "start": 0.0, "duration": 3.0}},
             ],
             "confidence": 0.85,
@@ -120,13 +135,16 @@ FEW_SHOT_EXAMPLES: list[dict[str, Any]] = [
         "reasoning": (
             "No music, so cuts stay unsynced. Both close, face-forward shots are kept "
             "whole since talking-head content relies on continuity, not rapid cutting. "
-            "A static caption matches the style's strong preference for static over "
-            "karaoke, anchored at the bottom so it doesn't cover the speaker's face."
+            "rule_of_thirds reframe on s1 subtly biases the crop toward the subject's "
+            "head without per-frame tracking. A static caption matches the style's "
+            "strong preference for static over karaoke, anchored at the bottom so it "
+            "doesn't cover the speaker's face."
         ),
     },
     {
         # Mixed: moderate pace, one weak/low-value shot dropped ("less is
-        # more"), a single caption.
+        # more"), a single caption. Demonstrates that a minimal plan with no
+        # transition or reframe ops is valid -- not every edit needs them.
         "brief": {
             "features": {
                 "aspect": 0.5625,
@@ -152,7 +170,8 @@ FEW_SHOT_EXAMPLES: list[dict[str, Any]] = [
                 "effect_freq": 0.1,
                 "sample_count": 10,
             },
-            "tools": ["cutter", "effect", "emoji", "text"],
+            "tools": ["cutter", "effect", "emoji", "music", "reframe", "text", "transition"],
+            "template": "quick_montage",
         },
         "ideal_plan": {
             "ops": [
@@ -165,7 +184,9 @@ FEW_SHOT_EXAMPLES: list[dict[str, Any]] = [
             "s2 is a long, low-motion, faceless wide shot -- exactly the kind of "
             "low-value filler the style's short median shot length argues against. "
             "Dropping it keeps only the two close, face-forward shots and tightens the "
-            "edit toward the learned pacing, per 'less is more'."
+            "edit toward the learned pacing, per 'less is more'. No transition or "
+            "reframe needed: the two cuts are clean and the default center_crop already "
+            "suits close-up, face-forward shots."
         ),
     },
 ]

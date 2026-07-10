@@ -12,9 +12,10 @@ Two layers, matching how the module is built:
 
 from __future__ import annotations
 
-import pytest
-
 import importlib
+import warnings
+
+import pytest
 
 from autoedit import ingest
 from autoedit.extractors.audio import AudioFeatures, extract_audio
@@ -437,6 +438,29 @@ class TestExtractPool:
         )
         features = extract_pool(["a.mp4", "b.mp4"])
         assert features.beat_times == []
+
+    def test_warns_when_any_clip_has_music_bpm_but_beat_grid_is_empty(self, monkeypatch):
+        _patch_extract_by_path(
+            monkeypatch,
+            {
+                "a.mp4": _clip_features(music_bpm=128.0),
+                "b.mp4": _clip_features(music_bpm=None),
+            },
+        )
+        with pytest.warns(UserWarning, match="beat grid"):
+            extract_pool(["a.mp4", "b.mp4"])
+
+    def test_no_warning_when_no_clip_has_music_bpm(self, monkeypatch):
+        _patch_extract_by_path(
+            monkeypatch,
+            {
+                "a.mp4": _clip_features(music_bpm=None),
+                "b.mp4": _clip_features(music_bpm=None),
+            },
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            extract_pool(["a.mp4", "b.mp4"])  # must not raise
 
     def test_single_clip_pool_matches_a_plain_extract(self, monkeypatch):
         one = _clip_features(shots=[_shot_dict("s1", "a.mp4"), _shot_dict("s2", "a.mp4")])

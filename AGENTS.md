@@ -97,18 +97,22 @@ Timeline        tracks of instructions (a plain Pydantic model that mirrors
 
 ---
 
-## Build order (vertical slice, thin path first)
-0. Repo skeleton + all Pydantic models above (+ tests that they validate).
-1. `ingest.probe` → MediaAsset.
-2. The four shared extractors (each pure + tested on a fixture).
-3. Phase A `aggregate` → StyleProfile (across MULTIPLE videos).
-4. Phase B `content.extract` → ContentFeatures.
-5. Subsystems + single-pass renderer.
-6. Director: brief builder, stubbed LLM interface, EditPlan validation, heuristic fallback.
-7. Executor + end-to-end CLI (`learn`, `make`) running fully with the LLM stubbed.
-8. Plan-level review + publish gallery.
+## Current state
+Steps 0-8 are complete. The pipeline runs end-to-end with zero AI, the
+template system (3 builtin templates, Hungarian-algorithm slot assignment),
+7 subsystems (cutter, text, emoji, effect, transition, reframe, music),
+a real LLM client (openai_client.py), an offline eval harness, a results
+gallery, dry-run mode, multi-clip pooling, and beat-synced cuts.
 
-Only after step 7 runs deterministically do we connect a real model.
+## Next milestones
+1. Split renderer.py into a package (video/overlays/audio/transitions).
+2. More builtin templates (product showcase, before/after, tutorial).
+3. User-created templates (reverse-engineer a reference video's cut
+   rhythm into a reusable Template JSON).
+4. Optional ML module: auto-reframe via subject tracking (the first place
+   the no-ML approach strains — currently limited to center_crop /
+   rule_of_thirds).
+5. A lightweight UI for previewing plans before rendering.
 
 ## Testing rule
 No test may require a real video or a render to check logic. Everything before the
@@ -120,3 +124,8 @@ and plans.
 - MoviePy `TextClip` needs an explicit font path (no system font resolution on Linux).
 - `ffmpeg` is a required system dependency, not a pip package.
 - A single reference video is one data point — StyleProfile must aggregate many.
+- Both `opencv-python` AND `opencv-python-headless` must be pinned `<5` (scenedetect
+  pulls in the non-headless variant unpinned; 5.0 removed `CascadeClassifier`).
+- Roboto has no emoji glyphs — emoji overlays need NotoColorEmoji or similar.
+- `extract_pool` always sets `beat_times=[]` — pass `--music` for beat-sync on
+  multi-clip edits.

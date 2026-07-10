@@ -21,18 +21,30 @@ _LOW_MOTION_MAX = 0.3
 _HIGH_MOTION_MIN = 0.6
 
 
-def build_brief(features: ContentFeatures, style: StyleProfile, manifest: dict[str, Any]) -> dict[str, Any]:
+def build_brief(
+    features: ContentFeatures,
+    style: StyleProfile,
+    manifest: dict[str, Any],
+    *,
+    template_name: str | None = None,
+) -> dict[str, Any]:
     """Return the compact JSON brief the director hands to the LLM (or heuristic).
 
-    Includes the best-fitting template's name (per `templates.match_template`,
-    deterministic, no LLM) so the LLM knows which structure is already in
-    play — it's free to follow it or override it entirely.
+    Includes the best-fitting template's name so the LLM knows which structure
+    is already in play — it's free to follow it or override it entirely.
+
+    `template_name` may be injected by the caller (e.g. `director.direct`,
+    which has already called `match_template` for its own heuristic fallback
+    logic and passes the result here to avoid a redundant second call). When
+    omitted, `match_template` is called internally as a fallback — backwards
+    compatible for any caller that doesn't pre-compute the match.
     """
+    resolved_name = template_name if template_name is not None else match_template(features, style).name
     return {
         "features": _brief_features(features),
         "style": _brief_style(style),
         "tools": sorted(manifest.keys()),
-        "template": match_template(features, style).name,
+        "template": resolved_name,
     }
 
 
